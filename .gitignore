@@ -1,23 +1,30 @@
-# Object files
+# Autotools:
+*.la
+*.lo
 *.o
-*.ko
-*.obj
-*.elf
+.deps
+.libs
+/aclocal.m4
+/autom4te.cache
+/build-aux
+/config.*
+/configure
+/libtool
+/m4
+Makefile
+Makefile.in
+libbitcoin-client.pc
 
-# Libraries
-*.lib
-*.a
+# IDE's and editors:
+*~
+.*.swp
+.dirstamp
+/*.kdev4
+/.cproject
+/.project
+/.settings
+/nbproject
+bin
+obj
+libwallet_1.0.10-1_amd64.deb
 
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
-
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
