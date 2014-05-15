@@ -27,7 +27,7 @@
 #include <obelisk/obelisk.hpp>
 
 #include <bitcoin/address.hpp>
-#include <wallet/define.hpp>
+#include <bitcoin/define.hpp>
 
 namespace libwallet {
 
@@ -50,13 +50,13 @@ struct obelisk_query {
 class watcher
 {
 public:
-    BCW_API ~watcher();
-    BCW_API watcher();
+    BC_API ~watcher();
+    BC_API watcher();
 
-    BCW_API void disconnect();
-    BCW_API void connect(const std::string& server);
+    BC_API void disconnect();
+    BC_API void connect(const std::string& server);
 
-    BCW_API void watch_address(const payment_address& address);
+    BC_API void watch_address(const payment_address& address);
 
     watcher(const watcher& copy) = delete;
     watcher& operator=(const watcher& copy) = delete;

@@ -24,30 +24,30 @@
 
 namespace libwallet {
 
-BCW_API watcher::~watcher()
+BC_API watcher::~watcher()
 {
     shutdown_ = true;
     looper_.join();
 }
 
-BCW_API watcher::watcher()
+BC_API watcher::watcher()
   : shutdown_(false), request_done_(false), looper_([this](){loop();})
 {
 }
 
-BCW_API void watcher::disconnect()
+BC_API void watcher::disconnect()
 {
     std::lock_guard<std::mutex> m(mutex_);
     server_ = "";
 }
 
-BCW_API void watcher::connect(const std::string& server)
+BC_API void watcher::connect(const std::string& server)
 {
     std::lock_guard<std::mutex> m(mutex_);
     server_ = server;
 }
 
-BCW_API void watcher::watch_address(const payment_address& address)
+BC_API void watcher::watch_address(const payment_address& address)
 {
     addresses_[address] = 0;
 }
