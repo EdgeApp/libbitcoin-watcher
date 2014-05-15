@@ -10,7 +10,6 @@
 /config.*
 /configure
 /libtool
-/m4
 Makefile
 Makefile.in
 libbitcoin-client.pc
