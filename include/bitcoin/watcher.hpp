@@ -19,4 +19,81 @@
 #ifndef LIBBITCOIN_CLIENT_WATCHER_HPP
 #define LIBBITCOIN_CLIENT_WATCHER_HPP
 
+#include <atomic>
+#include <mutex>
+#include <queue>
+#include <thread>
+#include <unordered_map>
+#include <obelisk/obelisk.hpp>
+
+#include <bitcoin/address.hpp>
+#include <wallet/define.hpp>
+
+namespace libwallet {
+
+using namespace libbitcoin;
+
+struct obelisk_query {
+    enum {
+        none, address_history, get_tx
+    } type;
+    payment_address address;
+    size_t from_height;
+    hash_digest txid;
+};
+
+/**
+ * Maintains a connection to an obelisk servers, and uses that connection to
+ * watch one or more bitcoin addresses for activity (Actually, since the
+ * client library is broken, it opens a new obelisk connection every time.)
+ */
+class watcher
+{
+public:
+    BCW_API ~watcher();
+    BCW_API watcher();
+
+    BCW_API void disconnect();
+    BCW_API void connect(const std::string& server);
+
+    BCW_API void watch_address(const payment_address& address);
+
+    watcher(const watcher& copy) = delete;
+    watcher& operator=(const watcher& copy) = delete;
+
+private:
+    // Guards access to object state:
+    std::mutex mutex_;
+
+    // Addresses we care about:
+    std::unordered_map<payment_address, size_t> addresses_;
+
+    // Transaction table:
+    std::unordered_map<hash_digest, transaction_type> tx_table_;
+
+    // Server connection info:
+    std::string server_;
+
+    // Stuff waiting for the query thread:
+    size_t last_address_;
+    std::queue<hash_digest> tx_query_queue_;
+
+    // Obelisk query thread:
+    std::atomic<bool> shutdown_;
+    std::atomic<bool> request_done_;
+    std::thread looper_;
+
+    void enqueue_tx_query(hash_digest hash);
+    void history_fetched(const std::error_code& ec,
+        const payment_address& address, const blockchain::history_list& history);
+    void tx_fetched(const std::error_code& ec, const transaction_type& tx);
+    obelisk_query next_query();
+    std::string get_server();
+    void do_query(const obelisk_query& query);
+    void loop();
+};
+
+} // namespace libwallet
+
 #endif
+
