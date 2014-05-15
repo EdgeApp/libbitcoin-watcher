@@ -279,7 +279,10 @@ BC_API output_info_list watcher::get_utxos(const payment_address& address)
  */
 void watcher::enqueue_tx_query(hash_digest txid, hash_digest parent_txid, bool mempool)
 {
-    get_tx_queue_.push_back(pending_get_tx{txid, parent_txid, mempool});
+    if (mempool)
+        get_tx_queue_.push_back(pending_get_tx{txid, parent_txid, mempool});
+    else
+        get_tx_queue_.push_front(pending_get_tx{txid, parent_txid, mempool});
 }
 
 /**
