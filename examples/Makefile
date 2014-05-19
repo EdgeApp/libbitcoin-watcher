@@ -9,7 +9,10 @@ default: all
 watcher: watcher.o
 	$(CXX) -o $@ $< $(LIBS)
 
-all: watcher
+picker: picker.o
+	$(CXX) -o $@ $< $(LIBS)
+
+all: watcher picker
 
 clean:
 	rm -f watcher

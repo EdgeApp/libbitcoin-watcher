@@ -1,7 +1,7 @@
 #include <iostream>
 #include <string>
 #include <sstream>
-#include <wallet/watcher.hpp>
+#include <bitcoin/watcher.hpp>
 
 /**
  * Command-line interface to the wallet watcher service.

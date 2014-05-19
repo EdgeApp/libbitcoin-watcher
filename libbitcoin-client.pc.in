@@ -7,6 +7,6 @@ Name: libbitcoin-client
 Description: Client library for communicating with SX servers.
 URL: http://libbitcoin.dyne.org/libbitcoin-client/
 Version: @PACKAGE_VERSION@
-Requires: libbitcoin libobelisk
+Requires: libwallet libbitcoin libobelisk
 Cflags: -I${includedir}
 Libs: -L${libdir} -lbitcoin-client
