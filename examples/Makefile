@@ -12,8 +12,8 @@ watcher: watcher.o
 picker: picker.o
 	$(CXX) -o $@ $< $(LIBS)
 
-all: watcher picker
+all: picker watcher
 
 clean:
-	rm -f watcher
+	rm -f picker watcher
 	rm -f *.o

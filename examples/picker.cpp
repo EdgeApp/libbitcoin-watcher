@@ -4,7 +4,7 @@
 #include <sstream>
 
 #include <bitcoin/bitcoin.hpp>
-#include <bitcoin/picker.hpp>
+#include <bitcoin/client/picker.hpp>
 
 static void
 create_tx(bc::transaction_type& tx,
