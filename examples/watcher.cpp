@@ -21,6 +21,8 @@ private:
     void cmd_disconnect(std::stringstream& args);
     void cmd_watch(std::stringstream& args);
 
+    void callback(const libbitcoin::transaction_type& tx);
+
     libwallet::watcher watcher;
     bool done_;
 };
@@ -32,6 +34,12 @@ cli::~cli()
 cli::cli()
   : done_(false)
 {
+    libwallet::watcher::callback cb =
+        [this](const libbitcoin::transaction_type& tx)
+        {
+            callback(tx);
+        };
+    watcher.set_callback(cb);
 }
 
 int cli::run()
@@ -109,6 +117,12 @@ void cli::cmd_watch(std::stringstream& args)
         return;
     }
     watcher.watch_address(address);
+}
+
+void cli::callback(const libbitcoin::transaction_type& tx)
+{
+    auto txid = libbitcoin::encode_hex(libbitcoin::hash_transaction(tx));
+    std::cout << "got transaction " << txid << std::endl;
 }
 
 int main()

@@ -49,7 +49,18 @@ BC_API void watcher::connect(const std::string& server)
 
 BC_API void watcher::watch_address(const payment_address& address)
 {
+    std::lock_guard<std::mutex> m(mutex_);
     addresses_[address] = address_row{0, std::vector<txo>()};
+}
+
+/**
+ * Sets up the new-transaction callback. This callback will be called from
+ * some random thread, so be sure to handle that with a mutex or such.
+ */
+BC_API void watcher::set_callback(callback& cb)
+{
+    std::lock_guard<std::mutex> m(mutex_);
+    cb_ = cb;
 }
 
 /**
@@ -113,10 +124,15 @@ void watcher::tx_fetched(const std::error_code& ec,
 
     // Update our state with the new info:
     tx_table_[txid] = tx;
+    if (cb_)
+        cb_(tx);
 
     std::cout << "Got tx " << encode_hex(txid) << std::endl;
 }
 
+/**
+ * Figures out the next thing for the query thread to work on.
+ */
 watcher::obelisk_query watcher::next_query()
 {
     std::lock_guard<std::mutex> m(mutex_);
@@ -153,12 +169,18 @@ watcher::obelisk_query watcher::next_query()
     return out;
 }
 
+/**
+ * Obtains the server string for the watcher thread, using a mutex lock.
+ */
 std::string watcher::get_server()
 {
     std::lock_guard<std::mutex> m(mutex_);
     return server_;
 }
 
+/**
+ * Connects to an obelisk server and makes a request.
+ */
 void watcher::do_query(const obelisk_query& query)
 {
     // Connect to the sever:

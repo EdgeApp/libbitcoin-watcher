@@ -20,6 +20,7 @@
 #define LIBBITCOIN_CLIENT_WATCHER_HPP
 
 #include <atomic>
+#include <functional>
 #include <mutex>
 #include <queue>
 #include <thread>
@@ -48,6 +49,9 @@ public:
     BC_API void connect(const std::string& server);
 
     BC_API void watch_address(const payment_address& address);
+
+    typedef std::function<void (const transaction_type&)> callback;
+    BC_API void set_callback(callback& cb);
 
     watcher(const watcher& copy) = delete;
     watcher& operator=(const watcher& copy) = delete;
@@ -95,6 +99,9 @@ private:
     // Stuff waiting for the query thread:
     size_t last_address_;
     std::queue<hash_digest> tx_query_queue_;
+
+    // Transaction callback:
+    callback cb_;
 
     // Server connection info:
     std::string server_;
