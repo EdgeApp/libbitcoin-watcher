@@ -17,10 +17,9 @@ public:
 private:
     void cmd_exit();
     void cmd_help();
-    void cmd_connect(std::stringstream &args);
-    void cmd_disconnect(std::stringstream &args);
-    void cmd_watch(std::stringstream &args);
-    void cmd_forget(std::stringstream &args);
+    void cmd_connect(std::stringstream& args);
+    void cmd_disconnect(std::stringstream& args);
+    void cmd_watch(std::stringstream& args);
 
     libwallet::watcher watcher;
     bool done_;
@@ -74,7 +73,7 @@ void cli::cmd_help()
     std::cout << "  watch <address>   - watch an address" << std::endl;
 }
 
-void cli::cmd_connect(std::stringstream &args)
+void cli::cmd_connect(std::stringstream& args)
 {
     std::string arg;
     args >> arg;
@@ -88,12 +87,12 @@ void cli::cmd_connect(std::stringstream &args)
     watcher.connect(arg);
 }
 
-void cli::cmd_disconnect(std::stringstream &args)
+void cli::cmd_disconnect(std::stringstream& args)
 {
     watcher.disconnect();
 }
 
-void cli::cmd_watch(std::stringstream &args)
+void cli::cmd_watch(std::stringstream& args)
 {
     std::string arg;
     args >> arg;
