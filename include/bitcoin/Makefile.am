@@ -1,5 +1,8 @@
 bitcoin_includedir = $(includedir)/bitcoin
 bitcoin_include_HEADERS = \
-    watcher.hpp \
-    picker.hpp
+    client.hpp
 
+bitcoin_client_includedir = $(includedir)/bitcoin/client
+bitcoin_client_include_HEADERS = \
+    client/picker.hpp \
+    client/watcher.hpp
