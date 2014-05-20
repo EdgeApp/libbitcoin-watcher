@@ -53,6 +53,8 @@ public:
     typedef std::function<void (const transaction_type&)> callback;
     BC_API void set_callback(callback& cb);
 
+    BC_API output_info_list get_utxos(const payment_address& address);
+
     watcher(const watcher& copy) = delete;
     watcher& operator=(const watcher& copy) = delete;
 
@@ -76,7 +78,7 @@ private:
      * A transaction output putting funds into an address. If the spend
      * field is null, this output is unspent.
      */
-    struct txo {
+    struct txo_type {
         output_point output;
         uint64_t value;
         input_point spend; // null if this output hasn't been spent
@@ -87,7 +89,7 @@ private:
      */
     struct address_row {
         size_t last_height;
-        std::vector<txo> outputs;
+        std::vector<txo_type> outputs;
     };
 
     // Addresses we care about:

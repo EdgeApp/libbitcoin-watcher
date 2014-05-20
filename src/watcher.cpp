@@ -50,7 +50,7 @@ BC_API void watcher::connect(const std::string& server)
 BC_API void watcher::watch_address(const payment_address& address)
 {
     std::lock_guard<std::mutex> m(mutex_);
-    addresses_[address] = address_row{0, std::vector<txo>()};
+    addresses_[address] = address_row{0, std::vector<txo_type>()};
 }
 
 /**
@@ -61,6 +61,32 @@ BC_API void watcher::set_callback(callback& cb)
 {
     std::lock_guard<std::mutex> m(mutex_);
     cb_ = cb;
+}
+
+/**
+ * Obtains a list of unspent outputs for an address. This is needed to spend
+ * funds.
+ */
+BC_API output_info_list watcher::get_utxos(const payment_address& address)
+{
+    std::lock_guard<std::mutex> m(mutex_);
+    output_info_list out;
+
+    auto row = addresses_.find(address);
+    if (row == addresses_.end())
+        return out;
+
+    for (txo_type& output: row->second.outputs)
+    {
+        if (null_hash == output.spend.hash)
+        {
+            output_info_type info;
+            info.point = output.output;
+            info.value = output.value;
+            out.push_back(info);
+        }
+    }
+    return out;
 }
 
 /**
@@ -99,7 +125,7 @@ void watcher::history_fetched(const std::error_code& ec,
             if (max_height <= row.spend_height)
                 max_height = row.spend_height + 1;
         }
-        txo output = {row.output, row.value, row.spend};
+        txo_type output = {row.output, row.value, row.spend};
         addresses_[address].outputs.push_back(output);
     }
     addresses_[address].last_height = max_height;
