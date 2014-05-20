@@ -33,15 +33,6 @@ namespace libwallet {
 
 using namespace libbitcoin;
 
-struct obelisk_query {
-    enum {
-        none, address_history, get_tx
-    } type;
-    payment_address address;
-    size_t from_height;
-    hash_digest txid;
-};
-
 /**
  * Maintains a connection to an obelisk servers, and uses that connection to
  * watch one or more bitcoin addresses for activity (Actually, since the
@@ -65,18 +56,48 @@ private:
     // Guards access to object state:
     std::mutex mutex_;
 
+    /**
+     * A pending query to the obelisk server.
+     */
+    struct obelisk_query {
+        enum {
+            none, address_history, get_tx
+        } type;
+        payment_address address;
+        size_t from_height;
+        hash_digest txid;
+    };
+
+    /**
+     * A transaction output putting funds into an address. If the spend
+     * field is null, this output is unspent.
+     */
+    struct txo {
+        output_point output;
+        uint64_t value;
+        input_point spend; // null if this output hasn't been spent
+    };
+
+    /**
+     * An entry in the address table.
+     */
+    struct address_row {
+        size_t last_height;
+        std::vector<txo> outputs;
+    };
+
     // Addresses we care about:
-    std::unordered_map<payment_address, size_t> addresses_;
+    std::unordered_map<payment_address, address_row> addresses_;
 
     // Transaction table:
     std::unordered_map<hash_digest, transaction_type> tx_table_;
 
-    // Server connection info:
-    std::string server_;
-
     // Stuff waiting for the query thread:
     size_t last_address_;
     std::queue<hash_digest> tx_query_queue_;
+
+    // Server connection info:
+    std::string server_;
 
     // Obelisk query thread:
     std::atomic<bool> shutdown_;

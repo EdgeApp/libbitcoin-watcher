@@ -49,7 +49,7 @@ BC_API void watcher::connect(const std::string& server)
 
 BC_API void watcher::watch_address(const payment_address& address)
 {
-    addresses_[address] = 0;
+    addresses_[address] = address_row{0, std::vector<txo>()};
 }
 
 /**
@@ -76,13 +76,22 @@ void watcher::history_fetched(const std::error_code& ec,
     }
 
     // Update our state with the new info:
+    size_t max_height = addresses_[address].last_height;
     for (auto row: history)
     {
         enqueue_tx_query(row.output.hash);
+        if (max_height <= row.output_height)
+            max_height = row.output_height + 1;
         if (null_hash != row.spend.hash)
+        {
             enqueue_tx_query(row.spend.hash);
+            if (max_height <= row.spend_height)
+                max_height = row.spend_height + 1;
+        }
+        txo output = {row.output, row.value, row.spend};
+        addresses_[address].outputs.push_back(output);
     }
-    addresses_[address] = 0; // TODO: current block height
+    addresses_[address].last_height = max_height;
 
     std::cout << "Got address " << address.encoded() << std::endl;
 }
@@ -108,7 +117,7 @@ void watcher::tx_fetched(const std::error_code& ec,
     std::cout << "Got tx " << encode_hex(txid) << std::endl;
 }
 
-obelisk_query watcher::next_query()
+watcher::obelisk_query watcher::next_query()
 {
     std::lock_guard<std::mutex> m(mutex_);
     obelisk_query out;
@@ -140,7 +149,7 @@ obelisk_query watcher::next_query()
         ++it;
     out.type = obelisk_query::address_history;
     out.address = it->first;
-    out.from_height = it->second;
+    out.from_height = it->second.last_height;
     return out;
 }
 
