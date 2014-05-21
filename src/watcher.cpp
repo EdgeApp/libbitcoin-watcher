@@ -93,10 +93,22 @@ BC_API output_info_list watcher::get_utxos(const payment_address& address)
  * Places a transaction in the queue if we don't already have it in the db.
  * Assumes the mutex is already being held.
  */
-void watcher::enqueue_tx_query(hash_digest hash)
+void watcher::enqueue_tx_query(hash_digest txid)
 {
-    if (tx_table_.end() == tx_table_.find(hash))
-        tx_query_queue_.push(hash);
+    if (tx_table_.end() == tx_table_.find(txid))
+        get_tx_queue_.push(txid);
+}
+
+/**
+ * Inserts a tx into the database, assuming the address table has already been
+ * updated.
+ * Assumes the mutex is already being held.
+ */
+void watcher::insert_tx(const transaction_type& tx)
+{
+    tx_table_[hash_transaction(tx)] = tx;
+    if (cb_)
+        cb_(tx);
 }
 
 void watcher::history_fetched(const std::error_code& ec,
@@ -133,8 +145,7 @@ void watcher::history_fetched(const std::error_code& ec,
     std::cout << "Got address " << address.encoded() << std::endl;
 }
 
-void watcher::tx_fetched(const std::error_code& ec,
-    const transaction_type& tx)
+void watcher::got_tx(const std::error_code& ec, const transaction_type& tx)
 {
     std::lock_guard<std::mutex> m(mutex_);
     request_done_ = true;
@@ -146,18 +157,13 @@ void watcher::tx_fetched(const std::error_code& ec,
         return;
     }
 
-    auto txid = hash_transaction(tx);
-
     // Update our state with the new info:
-    tx_table_[txid] = tx;
-    if (cb_)
-        cb_(tx);
-
-    std::cout << "Got tx " << encode_hex(txid) << std::endl;
+    insert_tx(tx);
 }
 
 /**
- * Figures out the next thing for the query thread to work on.
+ * Figures out the next thing for the query thread to work on. This happens
+ * under a mutex lock.
  */
 watcher::obelisk_query watcher::next_query()
 {
@@ -165,11 +171,11 @@ watcher::obelisk_query watcher::next_query()
     obelisk_query out;
 
     // Process pending tx queries, if any:
-    if (!tx_query_queue_.empty())
+    if (!get_tx_queue_.empty())
     {
         out.type = obelisk_query::get_tx;
-        out.txid = tx_query_queue_.front();
-        tx_query_queue_.pop();
+        out.txid = get_tx_queue_.front();
+        get_tx_queue_.pop();
         return out;
     }
 
@@ -205,7 +211,8 @@ std::string watcher::get_server()
 }
 
 /**
- * Connects to an obelisk server and makes a request.
+ * Connects to an obelisk server and makes a request. This happens outside
+ * the mutex lock.
  */
 void watcher::do_query(const obelisk_query& query)
 {
@@ -243,10 +250,9 @@ void watcher::do_query(const obelisk_query& query)
             auto handler = [this](const std::error_code& ec,
                 const transaction_type& tx)
             {
-                tx_fetched(ec, tx);
+                got_tx(ec, tx);
             };
-            fullnode.blockchain.fetch_transaction(query.txid,
-                handler);
+            fullnode.blockchain.fetch_transaction(query.txid, handler);
             break;
         }
         default:

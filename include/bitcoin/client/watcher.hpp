@@ -69,8 +69,10 @@ private:
         enum {
             none, address_history, get_tx
         } type;
+        // address_history:
         payment_address address;
         size_t from_height;
+        // get_tx:
         hash_digest txid;
     };
 
@@ -100,7 +102,7 @@ private:
 
     // Stuff waiting for the query thread:
     size_t last_address_;
-    std::queue<hash_digest> tx_query_queue_;
+    std::queue<hash_digest> get_tx_queue_;
 
     // Transaction callback:
     callback cb_;
@@ -113,10 +115,17 @@ private:
     std::atomic<bool> request_done_;
     std::thread looper_;
 
-    void enqueue_tx_query(hash_digest hash);
+    // Database update (the mutex must be held before calling):
+    void enqueue_tx_query(hash_digest txid);
+    void insert_tx(const transaction_type& tx);
+
+    // Callbacks (these grab the mutex):
     void history_fetched(const std::error_code& ec,
         const payment_address& address, const blockchain::history_list& history);
-    void tx_fetched(const std::error_code& ec, const transaction_type& tx);
+    void got_tx(const std::error_code& ec, const transaction_type& tx);
+    void got_tx_mem(const std::error_code& ec, const transaction_type& tx);
+
+    // Query thread stuff:
     obelisk_query next_query();
     std::string get_server();
     void do_query(const obelisk_query& query);
