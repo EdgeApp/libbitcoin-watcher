@@ -47,6 +47,12 @@ BC_API void watcher::connect(const std::string& server)
     server_ = server;
 }
 
+BC_API void watcher::send_tx(const transaction_type& tx)
+{
+    std::lock_guard<std::mutex> m(mutex_);
+    send_tx_queue_.push(tx);
+}
+
 BC_API void watcher::watch_address(const payment_address& address)
 {
     std::lock_guard<std::mutex> m(mutex_);
@@ -183,6 +189,22 @@ void watcher::got_tx_mem(const std::error_code& ec,
     insert_tx(tx);
 }
 
+void watcher::sent_tx(const std::error_code& ec)
+{
+    std::lock_guard<std::mutex> m(mutex_);
+    request_done_ = true;
+
+    if (ec)
+    {
+        std::cerr << "tx: Failed to send transaction" << std::endl;
+        return;
+    }
+    // TODO: Fire callback? Update database?
+    // The history update process will handle this for now.
+
+    std::cout << "Tx sent"  << std::endl;
+}
+
 /**
  * Figures out the next thing for the query thread to work on. This happens
  * under a mutex lock.
@@ -191,6 +213,15 @@ watcher::obelisk_query watcher::next_query()
 {
     std::lock_guard<std::mutex> m(mutex_);
     obelisk_query out;
+
+    // Process pending sends, if any:
+    if (!send_tx_queue_.empty())
+    {
+        out.type = obelisk_query::send_tx;
+        out.tx = send_tx_queue_.front();
+        send_tx_queue_.pop();
+        return out;
+    }
 
     // Process pending tx queries, if any:
     if (!get_tx_queue_.empty())
@@ -294,6 +325,17 @@ void watcher::do_query(const obelisk_query& query)
                 got_tx_mem(ec, tx, txid);
             };
             fullnode.transaction_pool.fetch_transaction(query.txid, handler);
+            break;
+        }
+        case obelisk_query::send_tx:
+        {
+            std::cout << "Send tx " << std::endl;
+
+            auto handler = [this](const std::error_code& ec)
+            {
+                sent_tx(ec);
+            };
+            fullnode.protocol.broadcast_transaction(query.tx, handler);
             break;
         }
         default:

@@ -47,6 +47,7 @@ public:
 
     BC_API void disconnect();
     BC_API void connect(const std::string& server);
+    BC_API void send_tx(const transaction_type& tx);
 
     BC_API void watch_address(const payment_address& address);
 
@@ -67,13 +68,15 @@ private:
      */
     struct obelisk_query {
         enum {
-            none, address_history, get_tx, get_tx_mem
+            none, address_history, get_tx, get_tx_mem, send_tx
         } type;
         // address_history:
         payment_address address;
         size_t from_height;
         // get_tx, get_tx_mem:
         hash_digest txid;
+        // send_tx:
+        transaction_type tx;
     };
 
     /**
@@ -107,6 +110,7 @@ private:
         bool mempool;
     };
     std::queue<pending_get_tx> get_tx_queue_;
+    std::queue<transaction_type> send_tx_queue_;
 
     // Transaction callback:
     callback cb_;
@@ -129,6 +133,7 @@ private:
     void got_tx(const std::error_code& ec, const transaction_type& tx);
     void got_tx_mem(const std::error_code& ec, const transaction_type& tx,
         hash_digest txid);
+    void sent_tx(const std::error_code& ec);
 
     // Query thread stuff:
     obelisk_query next_query();
