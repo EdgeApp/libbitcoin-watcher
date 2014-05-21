@@ -20,6 +20,7 @@ private:
     void cmd_connect(std::stringstream& args);
     void cmd_disconnect(std::stringstream& args);
     void cmd_watch(std::stringstream& args);
+    void cmd_prioritize(std::stringstream& args);
     void cmd_utxos(std::stringstream& args);
 
     void callback(const libbitcoin::transaction_type& tx);
@@ -62,6 +63,7 @@ int cli::run()
         else if (command == "connect")      cmd_connect(reader);
         else if (command == "disconnect")   cmd_disconnect(reader);
         else if (command == "watch")        cmd_watch(reader);
+        else if (command == "prioritize")   cmd_prioritize(reader);
         else if (command == "utxos")        cmd_utxos(reader);
         else
             std::cout << "unknown command " << command << std::endl;
@@ -83,6 +85,7 @@ void cli::cmd_help()
     std::cout << "  connect <server>  - connect to obelisk server" << std::endl;
     std::cout << "  disconnect        - stop talking to the obelisk server" << std::endl;
     std::cout << "  watch <address>   - watch an address" << std::endl;
+    std::cout << "  prioritize [<address>] - check an address more frequently" << std::endl;
     std::cout << "  utxos <address>   - get utxos for an address" << std::endl;
 }
 
@@ -111,6 +114,16 @@ void cli::cmd_watch(std::stringstream& args)
     if (!read_address(args, address))
         return;
     watcher.watch_address(address);
+}
+
+void cli::cmd_prioritize(std::stringstream& args)
+{
+    bc::payment_address address;
+    std::string arg;
+    args >> arg;
+    if (arg.size())
+        address.set_encoded(arg);
+    watcher.prioritize_address(address);
 }
 
 void cli::cmd_utxos(std::stringstream& args)
