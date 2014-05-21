@@ -50,6 +50,7 @@ public:
     BC_API void send_tx(const transaction_type& tx);
 
     BC_API void watch_address(const payment_address& address);
+    BC_API void prioritize_address(const payment_address& address);
 
     typedef std::function<void (const transaction_type&)> callback;
     BC_API void set_callback(callback& cb);
@@ -111,6 +112,8 @@ private:
     };
     std::queue<pending_get_tx> get_tx_queue_;
     std::queue<transaction_type> send_tx_queue_;
+    payment_address priority_address_;
+    bool checked_priority_address_;
 
     // Transaction callback:
     callback cb_;

@@ -31,7 +31,8 @@ BC_API watcher::~watcher()
 }
 
 BC_API watcher::watcher()
-  : shutdown_(false), request_done_(false), looper_([this](){loop();})
+  : checked_priority_address_(false),
+    shutdown_(false), request_done_(false), looper_([this](){loop();})
 {
 }
 
@@ -57,6 +58,16 @@ BC_API void watcher::watch_address(const payment_address& address)
 {
     std::lock_guard<std::mutex> m(mutex_);
     addresses_[address] = address_row{0, std::vector<txo_type>()};
+}
+
+/**
+ * Checks a particular address more frequently (every other poll). To go back
+ * to normal mode, pass an empty address.
+ */
+BC_API void watcher::prioritize_address(const payment_address& address)
+{
+    std::lock_guard<std::mutex> m(mutex_);
+    priority_address_ = address;
 }
 
 /**
@@ -237,6 +248,21 @@ watcher::obelisk_query watcher::next_query()
             return out;
         }
     }
+
+    // Handle the high-priority address, if we have one:
+    if (!checked_priority_address_)
+    {
+        auto row = addresses_.find(priority_address_);
+        if (row != addresses_.end())
+        {
+            out.type = obelisk_query::address_history;
+            out.address = row->first;
+            out.from_height = row->second.last_height;
+            checked_priority_address_ = true;
+            return out;
+        }
+    }
+    checked_priority_address_ = false;
 
     // Stop if no addresses:
     if (!addresses_.size())
