@@ -95,8 +95,7 @@ BC_API output_info_list watcher::get_utxos(const payment_address& address)
  */
 void watcher::enqueue_tx_query(hash_digest txid)
 {
-    if (tx_table_.end() == tx_table_.find(txid))
-        get_tx_queue_.push(txid);
+    get_tx_queue_.push(txid);
 }
 
 /**
@@ -173,10 +172,14 @@ watcher::obelisk_query watcher::next_query()
     // Process pending tx queries, if any:
     if (!get_tx_queue_.empty())
     {
-        out.type = obelisk_query::get_tx;
-        out.txid = get_tx_queue_.front();
+        auto txid = get_tx_queue_.front();
         get_tx_queue_.pop();
-        return out;
+        if (tx_table_.end() == tx_table_.find(txid))
+        {
+            out.type = obelisk_query::get_tx;
+            out.txid = txid;
+            return out;
+        }
     }
 
     // Stop if no addresses:
