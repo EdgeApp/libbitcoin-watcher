@@ -56,6 +56,7 @@ public:
     BC_API void set_callback(callback& cb);
 
     BC_API output_info_list get_utxos(const payment_address& address);
+    BC_API output_info_list get_utxos_2(const payment_address& address);
 
     watcher(const watcher& copy) = delete;
     watcher& operator=(const watcher& copy) = delete;

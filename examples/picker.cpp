@@ -4,7 +4,9 @@
 #include <sstream>
 
 #include <bitcoin/bitcoin.hpp>
-#include <bitcoin/client/picker.hpp>
+#include <bitcoin/client.hpp>
+
+using namespace libwallet;
 
 static void
 create_tx(bc::transaction_type& tx,
@@ -24,8 +26,7 @@ build_script_hash_script(const bc::short_hash& script_hash);
 static bc::transaction_output_type
 make_output(uint64_t amount, bc::payment_address addr);
 
-static void
-test_walletwatcher_1()
+int main(int argc, const char *argv[])
 {
     bc::payment_address change("18tLAQczRkDAh95xxEzvFKaaX9yHi5iNq6");
 
@@ -53,22 +54,9 @@ test_walletwatcher_1()
     create_tx(tx3, "97e06e49dfdd26c5a904670971ccf4c7fe7d9da53cb379bf9b442fc9427080b3", 1,
                    myaddr.encoded(), 3000);
 
-    libwallet::picker ww;
-    ww.watch_addr(myaddr.encoded());
-    ww.add_tx(tx1);
-    ww.add_tx(tx2);
-    ww.add_tx(tx3);
-
-    // Check unspent
-    bc::output_info_list unspent = ww.unspent_outputs(myaddr.encoded());
-    bc::output_info_list::iterator it = unspent.begin();
-    std::cout << "Unspent count: " << unspent.size() << std::endl;
-    for ( ; it != unspent.end(); ++it)
-    {
-        std::cout << "Tx Hash: " << bc::encode_hex(it->point.hash) << std::endl;
-        std::cout << "\tIdx: " << it->point.index << std::endl;
-        std::cout << "\tValue: " << it->value << std::endl;
-    }
+    watcher watcher;
+    watcher.watch_address(myaddr.encoded());
+    watcher.get_utxos(myaddr);
 
     uint64_t total = 5500;
     bc::transaction_output_list outputs;
@@ -78,12 +66,13 @@ test_walletwatcher_1()
     outputs.push_back(make_output(1000, airbitz));
 
     libwallet::unsigned_transaction_type utx;
-    libwallet::fee_schedule sched{1000};
-    if (ww.create_unsigned_tx(utx, myaddr, total,
-                              change.encoded(), sched, outputs))
+    libwallet::fee_schedule sched;
+    sched.satoshi_per_kb = 1000;
+    if (make_tx(watcher, myaddr, change,
+                total, sched, outputs, utx))
     {
         std::cout << "Created unsigned tx!" << std::endl;
-        if (ww.sign_and_send(utx, mykey))
+        if (sign_send_tx(watcher, utx, mykey))
         {
             std::cout << "Signed tx!" << std::endl;
             std::cout << "Fees: " << utx.fees << std::endl;
@@ -98,12 +87,7 @@ test_walletwatcher_1()
     {
         std::cout << "FAILED to create unsigned tx!" << std::endl;
     }
-}
-
-int main(int argc, const char *argv[])
-{
-    printf("test_walletwatcher_1();\n");
-    test_walletwatcher_1();
+    watcher.disconnect();
     return 0;
 }
 

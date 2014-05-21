@@ -21,18 +21,13 @@
 
 #include <bitcoin/bitcoin.hpp>
 #include <bitcoin/transaction.hpp>
+#include <bitcoin/client/watcher.hpp>
 
 namespace libwallet {
 
-struct unspent_outputs_result
-{
-    bc::output_point_list points;
-    uint64_t change;
-};
-
 struct unsigned_transaction_type
 {
-    bc::transaction_type tx;
+    transaction_type tx;
     uint64_t fees;
 };
 
@@ -41,48 +36,20 @@ struct fee_schedule
     uint64_t satoshi_per_kb;
 };
 
-struct tx_index
-{
-    size_t db_index;
-    uint32_t tx_index;
-};
-
-class picker
-{
-public:
-    BC_API picker();
-    BC_API ~picker();
-
-    BC_API void add_tx(bc::transaction_type& type);
-    BC_API void watch_addr(std::string addr);
-    BC_API bc::output_info_list unspent_outputs(std::string addr);
-
-    BC_API bool create_unsigned_tx(unsigned_transaction_type& utx,
-                            bc::payment_address fromAddr,
-                            int64_t amountSatoshi,
-                            bc::payment_address changeAddr,
-                            fee_schedule& sched,
-                            bc::transaction_output_list& outputs);
-    BC_API bool sign_and_send(unsigned_transaction_type& type,
-                            const bc::elliptic_curve_key& key);
-private:
-    void index_tx(bc::transaction_type& tx, size_t db_index);
-
-    bool sign(unsigned_transaction_type& utx, const bc::elliptic_curve_key& key);
-    bool send(bc::transaction_type& tx);
-
-    bc::script_type build_pubkey_hash_script(const bc::short_hash& pubkey_hash);
-
-    /* Database of all transactions */
-    std::vector<bc::transaction_type> tx_database;
-
-    /* Indexes into the tx_database of all transactions */
-    std::map<std::string, std::vector<tx_index>> unspent_tx_index;
-
-    /* Public Addresses to track unspent txs */
-    std::set<std::string> watching;
-};
+BC_API bool make_tx(
+             watcher& watcher,
+             const payment_address& fromAddr,
+             const payment_address& changeAddr,
+             int64_t amountSatoshi,
+             fee_schedule& sched,
+             transaction_output_list& outputs,
+             unsigned_transaction_type& utx);
+BC_API bool sign_send_tx(
+             watcher& watcher,
+             unsigned_transaction_type& utx,
+             const elliptic_curve_key& key);
 
 }
 
 #endif
+
