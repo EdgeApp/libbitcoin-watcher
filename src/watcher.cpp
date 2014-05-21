@@ -93,9 +93,9 @@ BC_API output_info_list watcher::get_utxos(const payment_address& address)
  * Places a transaction in the queue if we don't already have it in the db.
  * Assumes the mutex is already being held.
  */
-void watcher::enqueue_tx_query(hash_digest txid)
+void watcher::enqueue_tx_query(hash_digest txid, bool mempool)
 {
-    get_tx_queue_.push(txid);
+    get_tx_queue_.push(pending_get_tx{txid, mempool});
 }
 
 /**
@@ -160,6 +160,29 @@ void watcher::got_tx(const std::error_code& ec, const transaction_type& tx)
     insert_tx(tx);
 }
 
+void watcher::got_tx_mem(const std::error_code& ec,
+    const transaction_type& tx, hash_digest txid)
+{
+    std::lock_guard<std::mutex> m(mutex_);
+    request_done_ = true;
+
+    if (ec == error::not_found)
+    {
+        // Try the blockchain instead:
+        enqueue_tx_query(txid, false);
+        return;
+    }
+    else if (ec)
+    {
+        std::cerr << "tx: Failed to fetch transaction: "
+            << ec.message() << std::endl;
+        return;
+    }
+
+    // Update our state with the new info:
+    insert_tx(tx);
+}
+
 /**
  * Figures out the next thing for the query thread to work on. This happens
  * under a mutex lock.
@@ -172,12 +195,14 @@ watcher::obelisk_query watcher::next_query()
     // Process pending tx queries, if any:
     if (!get_tx_queue_.empty())
     {
-        auto txid = get_tx_queue_.front();
+        auto pending = get_tx_queue_.front();
         get_tx_queue_.pop();
-        if (tx_table_.end() == tx_table_.find(txid))
+        if (tx_table_.end() == tx_table_.find(pending.txid))
         {
             out.type = obelisk_query::get_tx;
-            out.txid = txid;
+            if (pending.mempool)
+                out.type = obelisk_query::get_tx_mem;
+            out.txid = pending.txid;
             return out;
         }
     }
@@ -256,6 +281,19 @@ void watcher::do_query(const obelisk_query& query)
                 got_tx(ec, tx);
             };
             fullnode.blockchain.fetch_transaction(query.txid, handler);
+            break;
+        }
+        case obelisk_query::get_tx_mem:
+        {
+            std::cout << "Get tx mem " << encode_hex(query.txid) << std::endl;
+
+            auto txid = query.txid;
+            auto handler = [this, txid](const std::error_code& ec,
+                const transaction_type& tx)
+            {
+                got_tx_mem(ec, tx, txid);
+            };
+            fullnode.transaction_pool.fetch_transaction(query.txid, handler);
             break;
         }
         default:

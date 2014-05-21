@@ -67,12 +67,12 @@ private:
      */
     struct obelisk_query {
         enum {
-            none, address_history, get_tx
+            none, address_history, get_tx, get_tx_mem
         } type;
         // address_history:
         payment_address address;
         size_t from_height;
-        // get_tx:
+        // get_tx, get_tx_mem:
         hash_digest txid;
     };
 
@@ -102,7 +102,11 @@ private:
 
     // Stuff waiting for the query thread:
     size_t last_address_;
-    std::queue<hash_digest> get_tx_queue_;
+    struct pending_get_tx {
+        hash_digest txid;
+        bool mempool;
+    };
+    std::queue<pending_get_tx> get_tx_queue_;
 
     // Transaction callback:
     callback cb_;
@@ -116,14 +120,15 @@ private:
     std::thread looper_;
 
     // Database update (the mutex must be held before calling):
-    void enqueue_tx_query(hash_digest txid);
+    void enqueue_tx_query(hash_digest txid, bool mempool=true);
     void insert_tx(const transaction_type& tx);
 
     // Callbacks (these grab the mutex):
     void history_fetched(const std::error_code& ec,
         const payment_address& address, const blockchain::history_list& history);
     void got_tx(const std::error_code& ec, const transaction_type& tx);
-    void got_tx_mem(const std::error_code& ec, const transaction_type& tx);
+    void got_tx_mem(const std::error_code& ec, const transaction_type& tx,
+        hash_digest txid);
 
     // Query thread stuff:
     obelisk_query next_query();
