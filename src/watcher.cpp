@@ -242,8 +242,8 @@ watcher::obelisk_query watcher::next_query()
         if (tx_table_.end() == tx_table_.find(pending.txid))
         {
             out.type = obelisk_query::get_tx;
-            //if (pending.mempool)
-            //    out.type = obelisk_query::get_tx_mem;
+            if (pending.mempool)
+                out.type = obelisk_query::get_tx_mem;
             out.txid = pending.txid;
             return out;
         }
@@ -350,7 +350,7 @@ void watcher::do_query(const obelisk_query& query)
             {
                 got_tx_mem(ec, tx, txid);
             };
-            //fullnode.transaction_pool.fetch_transaction(query.txid, handler);
+            fullnode.transaction_pool.fetch_transaction(query.txid, handler);
             break;
         }
         case obelisk_query::send_tx:
