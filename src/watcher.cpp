@@ -20,9 +20,18 @@
 
 #include <unistd.h>
 #include <iostream>
+#include <iterator>
+#include <sstream>
 #include <bitcoin/bitcoin.hpp>
 
 namespace libwallet {
+
+// Serialization stuff:
+constexpr uint32_t serial_magic = 0x3eab61c3;
+constexpr uint8_t id_address_row = 0x10;
+constexpr uint8_t id_address_output = 0x11;
+constexpr uint8_t id_tx_row = 0x20;
+constexpr uint8_t id_get_tx_row = 0x30;
 
 BC_API watcher::~watcher()
 {
@@ -52,6 +61,145 @@ BC_API void watcher::send_tx(const transaction_type& tx)
 {
     std::lock_guard<std::mutex> m(mutex_);
     send_tx_queue_.push_back(tx);
+}
+
+/**
+ * Serializes the database for storage while the app is off.
+ */
+BC_API data_chunk watcher::serialize()
+{
+    std::lock_guard<std::mutex> m(mutex_);
+
+    std::ostringstream stream;
+    auto serial = make_serializer(std::ostreambuf_iterator<char>(stream));
+
+    // Magic version bytes:
+    serial.write_big_endian(serial_magic);
+
+    // Address table:
+    for (const auto& row: addresses_)
+    {
+        serial.write_byte(id_address_row);
+        // Address:
+        payment_address address = row.first;
+        serial.write_byte(address.version());
+        serial.write_short_hash(address.hash());
+        serial.write_big_endian<uint64_t>(row.second.last_height);
+        // Output table:
+        for (const auto& output: row.second.outputs)
+        {
+            serial.write_byte(id_address_output);
+            serial.write_byte(address.version());
+            serial.write_short_hash(address.hash());
+            serial.write_hash(output.output.hash);
+            serial.write_big_endian<uint32_t>(output.output.index);
+            serial.write_big_endian<uint64_t>(output.value);
+            serial.write_hash(output.spend.hash);
+            serial.write_big_endian<uint32_t>(output.spend.index);
+        }
+    }
+
+    // Tx table:
+    for (const auto& row: tx_table_)
+    {
+        serial.write_byte(id_tx_row);
+        serial.write_hash(row.first);
+        serial.set_iterator(satoshi_save(row.second, serial.iterator()));
+    }
+
+    // Pending tx list:
+    for (auto row: get_tx_queue_)
+    {
+        serial.write_byte(id_get_tx_row);
+        serial.write_hash(row.txid);
+    }
+
+    // OMG HAX!
+    std::string str = stream.str();
+    auto data = reinterpret_cast<const uint8_t*>(str.data());
+    data_chunk out(data, data + str.size());
+    return out;
+}
+
+template <class Serial>
+static payment_address read_address(Serial& serial)
+{
+    auto version = serial.read_byte();
+    auto hash = serial.read_short_hash();
+    return payment_address(version, hash);
+}
+
+BC_API bool watcher::load(const data_chunk& data)
+{
+    auto serial = make_deserializer(data.begin(), data.end());
+    std::unordered_map<payment_address, address_row> addresses;
+    std::unordered_map<hash_digest, transaction_type> tx_table;
+    std::deque<pending_get_tx> get_tx_queue;
+
+    try
+    {
+        // Header bytes:
+        if (serial_magic != serial.read_big_endian<uint32_t>())
+            return false;
+
+        while (serial.iterator() != data.end())
+        {
+            switch (serial.read_byte())
+            {
+                case id_address_row:
+                {
+                    auto address = read_address(serial);
+                    address_row row;
+                    row.last_height = serial.read_big_endian<uint64_t>();
+                    addresses[address] = row;
+                    break;
+                }
+
+                case id_address_output:
+                {
+                    auto address = read_address(serial);
+                    txo_type row;
+                    row.output.hash = serial.read_hash();
+                    row.output.index = serial.read_big_endian<uint32_t>();
+                    row.value = serial.read_big_endian<uint64_t>();
+                    row.spend.hash = serial.read_hash();
+                    row.spend.index = serial.read_big_endian<uint32_t>();
+                    addresses[address].outputs.push_back(row);
+                    break;
+                }
+
+                case id_tx_row:
+                {
+                    auto hash = serial.read_hash();
+                    transaction_type tx;
+                    satoshi_load(serial.iterator(), data.end(), tx);
+                    auto step = serial.iterator() + satoshi_raw_size(tx);
+                    serial.set_iterator(step);
+                    tx_table[hash] = tx;
+                    break;
+                }
+
+                case id_get_tx_row:
+                {
+                    pending_get_tx row;
+                    row.txid = serial.read_hash();
+                    row.mempool = false;
+                    break;
+                }
+
+                default:
+                    return false;
+            }
+        }
+    }
+    catch (end_of_stream)
+    {
+        return false;
+    }
+    addresses_ = addresses;
+    tx_table_ = tx_table;
+    get_tx_queue_ = get_tx_queue;
+    return true;
 }
 
 BC_API void watcher::watch_address(const payment_address& address)

@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <fstream>
 #include <bitcoin/client/watcher.hpp>
 
 /**
@@ -22,10 +23,13 @@ private:
     void cmd_watch(std::stringstream& args);
     void cmd_prioritize(std::stringstream& args);
     void cmd_utxos(std::stringstream& args);
+    void cmd_save(std::stringstream& args);
+    void cmd_load(std::stringstream& args);
 
     void callback(const libbitcoin::transaction_type& tx);
 
     bool read_address(std::stringstream& args, bc::payment_address& out);
+    bool read_filename(std::stringstream& args, std::string& out);
 
     libwallet::watcher watcher;
     bool done_;
@@ -65,6 +69,8 @@ int cli::run()
         else if (command == "watch")        cmd_watch(reader);
         else if (command == "prioritize")   cmd_prioritize(reader);
         else if (command == "utxos")        cmd_utxos(reader);
+        else if (command == "save")         cmd_save(reader);
+        else if (command == "load")         cmd_load(reader);
         else
             std::cout << "unknown command " << command << std::endl;
     }
@@ -87,6 +93,8 @@ void cli::cmd_help()
     std::cout << "  watch <address>   - watch an address" << std::endl;
     std::cout << "  prioritize [<address>] - check an address more frequently" << std::endl;
     std::cout << "  utxos <address>   - get utxos for an address" << std::endl;
+    std::cout << "  save <filename>   - dump the database to disk" << std::endl;
+    std::cout << "  load <filename>   - load the database from disk" << std::endl;
 }
 
 void cli::cmd_connect(std::stringstream& args)
@@ -138,6 +146,47 @@ void cli::cmd_utxos(std::stringstream& args)
             utxo.point.index << std::endl;
 }
 
+void cli::cmd_save(std::stringstream& args)
+{
+    std::string filename;
+    if (!read_filename(args, filename))
+        return;
+
+    std::ofstream file(filename);
+    if (!file.is_open())
+    {
+        std::cerr << "cannot open " << filename << std::endl;
+        return;
+    }
+
+    auto db = watcher.serialize();
+    file.write(reinterpret_cast<const char*>(db.data()), db.size());
+    file.close();
+}
+
+void cli::cmd_load(std::stringstream& args)
+{
+    std::string filename;
+    if (!read_filename(args, filename))
+        return;
+
+    std::ifstream file(filename, std::ios::in | std::ios::binary | std::ios::ate);
+    if (!file.is_open())
+    {
+        std::cerr << "cannot open " << filename << std::endl;
+        return;
+    }
+
+    std::streampos size = file.tellg();
+    uint8_t *data = new uint8_t[size];
+    file.seekg(0, std::ios::beg);
+    file.read(reinterpret_cast<char*>(data), size);
+    file.close();
+
+    if (!watcher.load(bc::data_chunk(data, data + size)))
+        std::cerr << "error while loading data" << std::endl;
+}
+
 void cli::callback(const libbitcoin::transaction_type& tx)
 {
     auto txid = libbitcoin::encode_hex(libbitcoin::hash_transaction(tx));
@@ -157,6 +206,17 @@ bool cli::read_address(std::stringstream& args, bc::payment_address& out)
     if (!out.set_encoded(arg))
     {
         std::cout << "invalid address " << arg << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool cli::read_filename(std::stringstream& args, std::string& out)
+{
+    args >> out;
+    if (!out.size())
+    {
+        std::cout << "no file name given" << std::endl;
         return false;
     }
     return true;

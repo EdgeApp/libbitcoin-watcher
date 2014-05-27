@@ -49,6 +49,9 @@ public:
     BC_API void connect(const std::string& server);
     BC_API void send_tx(const transaction_type& tx);
 
+    BC_API data_chunk serialize();
+    BC_API bool load(const data_chunk& data);
+
     BC_API void watch_address(const payment_address& address);
     BC_API void prioritize_address(const payment_address& address);
 
