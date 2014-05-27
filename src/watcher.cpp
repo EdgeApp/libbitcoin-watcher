@@ -74,7 +74,7 @@ BC_API data_chunk watcher::serialize()
     auto serial = make_serializer(std::ostreambuf_iterator<char>(stream));
 
     // Magic version bytes:
-    serial.write_big_endian(serial_magic);
+    serial.write_4_bytes(serial_magic);
 
     // Address table:
     for (const auto& row: addresses_)
@@ -84,7 +84,7 @@ BC_API data_chunk watcher::serialize()
         payment_address address = row.first;
         serial.write_byte(address.version());
         serial.write_short_hash(address.hash());
-        serial.write_big_endian<uint64_t>(row.second.last_height);
+        serial.write_8_bytes(row.second.last_height);
         // Output table:
         for (const auto& output: row.second.outputs)
         {
@@ -92,10 +92,10 @@ BC_API data_chunk watcher::serialize()
             serial.write_byte(address.version());
             serial.write_short_hash(address.hash());
             serial.write_hash(output.output.hash);
-            serial.write_big_endian<uint32_t>(output.output.index);
-            serial.write_big_endian<uint64_t>(output.value);
+            serial.write_4_bytes(output.output.index);
+            serial.write_8_bytes(output.value);
             serial.write_hash(output.spend.hash);
-            serial.write_big_endian<uint32_t>(output.spend.index);
+            serial.write_4_bytes(output.spend.index);
         }
     }
 
@@ -139,7 +139,7 @@ BC_API bool watcher::load(const data_chunk& data)
     try
     {
         // Header bytes:
-        if (serial_magic != serial.read_big_endian<uint32_t>())
+        if (serial_magic != serial.read_4_bytes())
             return false;
 
         while (serial.iterator() != data.end())
@@ -150,7 +150,7 @@ BC_API bool watcher::load(const data_chunk& data)
                 {
                     auto address = read_address(serial);
                     address_row row;
-                    row.last_height = serial.read_big_endian<uint64_t>();
+                    row.last_height = serial.read_8_bytes();
                     addresses[address] = row;
                     break;
                 }
@@ -160,10 +160,10 @@ BC_API bool watcher::load(const data_chunk& data)
                     auto address = read_address(serial);
                     txo_type row;
                     row.output.hash = serial.read_hash();
-                    row.output.index = serial.read_big_endian<uint32_t>();
-                    row.value = serial.read_big_endian<uint64_t>();
+                    row.output.index = serial.read_4_bytes();
+                    row.value = serial.read_8_bytes();
                     row.spend.hash = serial.read_hash();
-                    row.spend.index = serial.read_big_endian<uint32_t>();
+                    row.spend.index = serial.read_4_bytes();
                     addresses[address].outputs.push_back(row);
                     break;
                 }
