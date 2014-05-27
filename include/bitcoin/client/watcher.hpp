@@ -22,7 +22,7 @@
 #include <atomic>
 #include <functional>
 #include <mutex>
-#include <queue>
+#include <deque>
 #include <thread>
 #include <unordered_map>
 #include <obelisk/obelisk.hpp>
@@ -56,7 +56,6 @@ public:
     BC_API void set_callback(callback& cb);
 
     BC_API output_info_list get_utxos(const payment_address& address);
-    BC_API output_info_list get_utxos_2(const payment_address& address);
 
     watcher(const watcher& copy) = delete;
     watcher& operator=(const watcher& copy) = delete;
@@ -111,8 +110,8 @@ private:
         hash_digest txid;
         bool mempool;
     };
-    std::queue<pending_get_tx> get_tx_queue_;
-    std::queue<transaction_type> send_tx_queue_;
+    std::deque<pending_get_tx> get_tx_queue_;
+    std::deque<transaction_type> send_tx_queue_;
     payment_address priority_address_;
     bool checked_priority_address_;
 

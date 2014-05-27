@@ -51,7 +51,7 @@ BC_API void watcher::connect(const std::string& server)
 BC_API void watcher::send_tx(const transaction_type& tx)
 {
     std::lock_guard<std::mutex> m(mutex_);
-    send_tx_queue_.push(tx);
+    send_tx_queue_.push_back(tx);
 }
 
 BC_API void watcher::watch_address(const payment_address& address)
@@ -112,7 +112,7 @@ BC_API output_info_list watcher::get_utxos(const payment_address& address)
  */
 void watcher::enqueue_tx_query(hash_digest txid, bool mempool)
 {
-    get_tx_queue_.push(pending_get_tx{txid, mempool});
+    get_tx_queue_.push_back(pending_get_tx{txid, mempool});
 }
 
 /**
@@ -230,7 +230,7 @@ watcher::obelisk_query watcher::next_query()
     {
         out.type = obelisk_query::send_tx;
         out.tx = send_tx_queue_.front();
-        send_tx_queue_.pop();
+        send_tx_queue_.pop_front();
         return out;
     }
 
@@ -238,7 +238,7 @@ watcher::obelisk_query watcher::next_query()
     if (!get_tx_queue_.empty())
     {
         auto pending = get_tx_queue_.front();
-        get_tx_queue_.pop();
+        get_tx_queue_.pop_front();
         if (tx_table_.end() == tx_table_.find(pending.txid))
         {
             out.type = obelisk_query::get_tx;
