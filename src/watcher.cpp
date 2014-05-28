@@ -517,13 +517,19 @@ void watcher::do_query(const obelisk_query& query)
     }
 
     // Wait for results:
-    while (!request_done_)
+    int timeout = 0;
+    while (!request_done_ && timeout < 100)
     {
         fullnode.update();
         usleep(100000); // OMG WTF!
+        timeout++;
     }
     pool.stop();
     pool.join();
+    if (!request_done_)
+    {
+        std::cout << "Timed out" << std::endl;
+    }
 }
 
 /**
