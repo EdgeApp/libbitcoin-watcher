@@ -218,6 +218,17 @@ BC_API void watcher::prioritize_address(const payment_address& address)
     priority_address_ = address;
 }
 
+
+BC_API transaction_type watcher::find_tx(hash_digest txid)
+{
+    std::lock_guard<std::mutex> m(mutex_);
+    auto tx = tx_table_.find(txid);
+    if (tx != tx_table_.end())
+        return tx->second;
+    else
+        return transaction_type();
+}
+
 /**
  * Sets up the new-transaction callback. This callback will be called from
  * some random thread, so be sure to handle that with a mutex or such.

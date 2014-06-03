@@ -54,6 +54,7 @@ public:
 
     BC_API void watch_address(const payment_address& address);
     BC_API void prioritize_address(const payment_address& address);
+    BC_API transaction_type find_tx(hash_digest txid);
 
     typedef std::function<void (const transaction_type&)> callback;
     BC_API void set_callback(callback& cb);

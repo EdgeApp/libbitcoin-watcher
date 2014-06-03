@@ -25,22 +25,37 @@
 
 namespace libwallet {
 
+static std::map<data_chunk, std::string> address_map;
 static script_type build_pubkey_hash_script(const short_hash& pubkey_hash);
+static operation create_data_operation(data_chunk& data);
 
 BC_API bool make_tx(
              watcher& watcher,
-             const payment_address& fromAddr,
+             const std::vector<payment_address>& addresses,
              const payment_address& changeAddr,
              int64_t amountSatoshi,
              fee_schedule& sched,
              transaction_output_list& outputs,
              unsigned_transaction_type& utx)
 {
-    output_info_list unspent = watcher.get_utxos(fromAddr);
+    output_info_list unspent;
+    utx.code = ok;
+    for (auto pa : addresses)
+    {
+        for (auto npa : watcher.get_utxos(pa))
+        {
+            hash_digest h = npa.point.hash;
+            utx.output_map[h] = pa;
+            unspent.push_back(npa);
+        }
+    }
     select_outputs_result os = select_outputs(unspent, amountSatoshi);
     /* Do we have the funds ? */
     if (os.points.size() <= 0)
+    {
+        utx.code = insufficent_funds;
         return false;
+    }
 
     utx.tx.version = 1;
     utx.tx.locktime = 0;
@@ -48,6 +63,7 @@ BC_API bool make_tx(
     for (; it != os.points.end(); it++)
     {
         transaction_input_type input;
+        input.sequence = 4294967295;
         input.previous_output.index = it->index;
         input.previous_output.hash = it->hash;
         utx.tx.inputs.push_back(input);
@@ -69,35 +85,64 @@ BC_API bool make_tx(
 BC_API bool sign_send_tx(
                   watcher& watcher,
                   unsigned_transaction_type& utx,
-                  const elliptic_curve_key& key)
+                  std::vector<elliptic_curve_key>& keys)
 {
-    const data_chunk public_key = key.public_key();
-    if (public_key.empty())
+    std::map<data_chunk, elliptic_curve_key> key_map;
+    for (size_t i = 0; i < utx.tx.inputs.size(); ++i)
     {
-        return false;
-    }
-    payment_address in_address;
-    set_public_key(in_address, public_key);
-    /* Able to create payment_address? */
-    if (in_address.version() == payment_address::invalid_version)
-    {
-        return false;
-    }
-    /* Create the input script */
-    script_type script_code = build_pubkey_hash_script(in_address.hash());
+        utx.code = ok;
+        transaction_input_type input = utx.tx.inputs[i];
+        hash_digest pubHash = input.previous_output.hash;
 
-    size_t input_index = 0;
-    hash_digest tx_hash =
-        script_type::generate_signature_hash(utx.tx, input_index, script_code, 1);
-    if (tx_hash == null_hash)
-    {
-        return false;
-    }
-    data_chunk signature = key.sign(tx_hash);
-    /* Why does sx do this? */
-    signature.push_back(0x01);
+        auto pa = utx.output_map.find(pubHash);
+        if (pa == utx.output_map.end())
+        {
+            utx.code = invalid_key;
+            return false;
+        }
+        elliptic_curve_key key;
+        /* Find an elliptic_curve_key for this input */
+        for (auto k : keys)
+        {
+            payment_address a;
+            set_public_key(a, k.public_key());
 
+            if (a.encoded() == pa->second.encoded())
+            {
+                key.set_secret(k.secret());
+                break;
+            }
+        }
+        data_chunk public_key = key.public_key();
+        if (public_key.empty())
+        {
+            utx.code = invalid_key;
+            return false;
+        }
+        /* Create the input script */
+        script_type sig_script = build_pubkey_hash_script(pa->second.hash());
+
+        hash_digest sig_hash =
+            script_type::generate_signature_hash(utx.tx, i, sig_script, 1);
+        if (sig_hash == null_hash)
+        {
+            utx.code = invalid_sig;
+            return false;
+        }
+        data_chunk signature = key.sign(sig_hash);
+        signature.push_back(0x01);
+
+        script_type new_script_object;
+        operation opsig = create_data_operation(signature);
+        new_script_object.push_operation(opsig);
+
+        operation opkey = create_data_operation(public_key);
+        new_script_object.push_operation(opkey);
+
+        utx.tx.inputs[i].script = new_script_object;
+    }
     watcher.send_tx(utx.tx);
+
     return true;
 }
 
@@ -111,6 +156,22 @@ static script_type build_pubkey_hash_script(const short_hash& pubkey_hash)
     result.push_operation({opcode::equalverify, data_chunk()});
     result.push_operation({opcode::checksig, data_chunk()});
     return result;
+}
+
+static operation create_data_operation(data_chunk& data)
+{
+    BITCOIN_ASSERT(data.size() < std::numeric_limits<uint32_t>::max());
+    operation op;
+    op.data = data;
+    if (data.size() <= 75)
+        op.code = opcode::special;
+    else if (data.size() < std::numeric_limits<uint8_t>::max())
+        op.code = opcode::pushdata1;
+    else if (data.size() < std::numeric_limits<uint16_t>::max())
+        op.code = opcode::pushdata2;
+    else if (data.size() < std::numeric_limits<uint32_t>::max())
+        op.code = opcode::pushdata4;
+    return op;
 }
 
 }

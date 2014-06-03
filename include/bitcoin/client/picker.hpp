@@ -25,10 +25,19 @@
 
 namespace libwallet {
 
+enum {
+    ok = 0,
+    insufficent_funds,
+    invalid_key,
+    invalid_sig
+};
+
 struct unsigned_transaction_type
 {
     transaction_type tx;
+    int code;
     uint64_t fees;
+    std::map<hash_digest, payment_address> output_map;
 };
 
 struct fee_schedule
@@ -38,7 +47,7 @@ struct fee_schedule
 
 BC_API bool make_tx(
              watcher& watcher,
-             const payment_address& fromAddr,
+             const std::vector<payment_address>& addresses,
              const payment_address& changeAddr,
              int64_t amountSatoshi,
              fee_schedule& sched,
@@ -47,7 +56,7 @@ BC_API bool make_tx(
 BC_API bool sign_send_tx(
              watcher& watcher,
              unsigned_transaction_type& utx,
-             const elliptic_curve_key& key);
+             std::vector<elliptic_curve_key>& keys);
 
 }
 

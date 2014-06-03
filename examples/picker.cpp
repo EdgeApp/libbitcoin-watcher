@@ -26,53 +26,67 @@ build_script_hash_script(const bc::short_hash& script_hash);
 static bc::transaction_output_type
 make_output(uint64_t amount, bc::payment_address addr);
 
+
 int main(int argc, const char *argv[])
 {
-    bc::payment_address change("18tLAQczRkDAh95xxEzvFKaaX9yHi5iNq6");
+    if (argc != 4)
+    {
+        std::cout << argv[0] << " <private-key> <send-to-address> <amount> " << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    std::string privkey(argv[1]);
+    std::string toaddress(argv[2]);
+    uint64_t total = atol(argv[3]);
 
+    if (total <= 0)
+    {
+        std::cerr << "Invalid amount" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    bc::secret_parameter secret = bc::decode_hash(privkey);
     bc::elliptic_curve_key mykey;
-    mykey.new_keypair();
+    if (!mykey.set_secret(secret, false))
+    {
+        std::cerr << "Invalid private key" << std::endl;
+        exit(EXIT_FAILURE);
+    }
 
     bc::payment_address myaddr;
-    bc::set_public_key(myaddr, mykey.public_key());
+    set_public_key(myaddr, mykey.public_key());
+
     std::cout << "My Payment Address: " << myaddr.encoded() << std::endl;
-    std::cout << "My Change Address: " << change.encoded() << std::endl;
+    std::cout << "My Change Address: " << myaddr.encoded() << std::endl;
 
-    bc::payment_address airbitz;
-    airbitz.set_encoded("16s85X2NNnX7b6kinLzZDWXgc9CYRrm961");
-
-    bc::payment_address myfriend;
-    myfriend.set_encoded("115BsxMQvVgJ7ZP4vrFrG6hNDUy6SypCi8");
-
-    bc::transaction_type tx1;
-    create_tx(tx1, "97e06e49dfdd26c5a904670971ccf4c7fe7d9da53cb379bf9b442fc9427080b3", 1,
-                   myaddr.encoded(), 1000);
-    bc::transaction_type tx2;
-    create_tx(tx2, "97e06e49dfdd26c5a904670971ccf4c7fe7d9da53cb379bf9b442fc9427080b3", 1,
-                   myaddr.encoded(), 2000);
-    bc::transaction_type tx3;
-    create_tx(tx3, "97e06e49dfdd26c5a904670971ccf4c7fe7d9da53cb379bf9b442fc9427080b3", 1,
-                   myaddr.encoded(), 3000);
+    bc::payment_address friendo;
+    if (!friendo.set_encoded(toaddress))
+    {
+        std::cerr << "Invalid payment address " << std::endl;
+        exit(EXIT_FAILURE);
+    }
 
     watcher watcher;
     watcher.watch_address(myaddr.encoded());
-    watcher.get_utxos(myaddr);
+    watcher.connect("tcp://obelisk.unsystem.net:9091");
+    sleep(50);
 
-    uint64_t total = 5500;
     bc::transaction_output_list outputs;
-    // To My Friend
-    outputs.push_back(make_output(4000, myfriend));
-    // To Airbitz
-    outputs.push_back(make_output(1000, airbitz));
+    // To Friend
+    outputs.push_back(make_output(5000, friendo));
 
     libwallet::unsigned_transaction_type utx;
     libwallet::fee_schedule sched;
     sched.satoshi_per_kb = 1000;
-    if (make_tx(watcher, myaddr, change,
+
+    std::vector<bc::payment_address> addresses;
+    addresses.push_back(myaddr);
+    if (make_tx(watcher, addresses, myaddr,
                 total, sched, outputs, utx))
     {
         std::cout << "Created unsigned tx!" << std::endl;
-        if (sign_send_tx(watcher, utx, mykey))
+        std::vector<elliptic_curve_key> keys;
+        keys.push_back(mykey);
+        if (sign_send_tx(watcher, utx, keys))
         {
             std::cout << "Signed tx!" << std::endl;
             std::cout << "Fees: " << utx.fees << std::endl;
