@@ -5,6 +5,7 @@
 
 #include <bitcoin/bitcoin.hpp>
 #include <bitcoin/client.hpp>
+#include <wallet/wallet.hpp>
 
 using namespace libwallet;
 
@@ -37,6 +38,7 @@ int main(int argc, const char *argv[])
     std::string privkey(argv[1]);
     std::string toaddress(argv[2]);
     uint64_t total = atol(argv[3]);
+    bool compressed = true;
 
     if (total <= 0)
     {
@@ -45,8 +47,14 @@ int main(int argc, const char *argv[])
     }
 
     bc::secret_parameter secret = bc::decode_hash(privkey);
+    if (secret == bc::null_hash)
+    {
+        secret = libwallet::wif_to_secret(privkey);
+        compressed = libwallet::is_wif_compressed(privkey);
+    }
+
     bc::elliptic_curve_key mykey;
-    if (!mykey.set_secret(secret, false))
+    if (!mykey.set_secret(secret, compressed))
     {
         std::cerr << "Invalid private key" << std::endl;
         exit(EXIT_FAILURE);
@@ -68,11 +76,12 @@ int main(int argc, const char *argv[])
     watcher watcher;
     watcher.watch_address(myaddr.encoded());
     watcher.connect("tcp://obelisk.unsystem.net:9091");
-    sleep(50);
+    sleep(100);
 
     bc::transaction_output_list outputs;
     // To Friend
-    outputs.push_back(make_output(5000, friendo));
+    outputs.push_back(make_output(total, friendo));
+    uint64_t fees = 10000;
 
     libwallet::unsigned_transaction_type utx;
     libwallet::fee_schedule sched;
@@ -81,16 +90,24 @@ int main(int argc, const char *argv[])
     std::vector<bc::payment_address> addresses;
     addresses.push_back(myaddr);
     if (make_tx(watcher, addresses, myaddr,
-                total, sched, outputs, utx))
+                total + fees, sched, outputs, utx))
     {
         std::cout << "Created unsigned tx!" << std::endl;
         std::vector<elliptic_curve_key> keys;
         keys.push_back(mykey);
         if (sign_send_tx(watcher, utx, keys))
         {
+            bc::data_chunk raw_tx(satoshi_raw_size(utx.tx));
+            bc::satoshi_save(utx.tx, raw_tx.begin());
+            std::string encoded(bc::encode_hex(raw_tx));
+            std::string pretty(bc::pretty(utx.tx));
+
             std::cout << "Signed tx!" << std::endl;
             std::cout << "Fees: " << utx.fees << std::endl;
             std::cout << bc::pretty(utx.tx) << std::endl;
+            std::cout << std::endl;
+            std::cout << bc::encode_hex(raw_tx) << std::endl;
+
         }
         else
         {

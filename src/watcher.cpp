@@ -221,7 +221,6 @@ BC_API void watcher::prioritize_address(const payment_address& address)
 
 BC_API transaction_type watcher::find_tx(hash_digest txid)
 {
-    std::lock_guard<std::mutex> m(mutex_);
     auto tx = tx_table_.find(txid);
     if (tx != tx_table_.end())
         return tx->second;
