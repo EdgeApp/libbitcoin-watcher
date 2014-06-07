@@ -91,11 +91,11 @@ BC_API data_chunk watcher::serialize()
             serial.write_byte(id_address_output);
             serial.write_byte(address.version());
             serial.write_short_hash(address.hash());
-            serial.write_hash(output.output.hash);
-            serial.write_4_bytes(output.output.index);
-            serial.write_8_bytes(output.value);
-            serial.write_hash(output.spend.hash);
-            serial.write_4_bytes(output.spend.index);
+            serial.write_hash(output.second.output.hash);
+            serial.write_4_bytes(output.second.output.index);
+            serial.write_8_bytes(output.second.value);
+            serial.write_hash(output.second.spend.hash);
+            serial.write_4_bytes(output.second.spend.index);
         }
     }
 
@@ -164,7 +164,9 @@ BC_API bool watcher::load(const data_chunk& data)
                     row.value = serial.read_8_bytes();
                     row.spend.hash = serial.read_hash();
                     row.spend.index = serial.read_4_bytes();
-                    addresses[address].outputs.push_back(row);
+
+                    std::string id = utxo_to_id(row.output);
+                    addresses[address].outputs[id] = row;
                     break;
                 }
 
@@ -205,7 +207,7 @@ BC_API bool watcher::load(const data_chunk& data)
 BC_API void watcher::watch_address(const payment_address& address)
 {
     std::lock_guard<std::mutex> m(mutex_);
-    addresses_[address] = address_row{0, std::vector<txo_type>()};
+    addresses_[address] = address_row{0, std::unordered_map<std::string, txo_type>()};
 }
 
 /**
@@ -251,13 +253,13 @@ BC_API output_info_list watcher::get_utxos(const payment_address& address)
     if (row == addresses_.end())
         return out;
 
-    for (txo_type& output: row->second.outputs)
+    for (auto& output: row->second.outputs)
     {
-        if (null_hash == output.spend.hash)
+        if (null_hash == output.second.spend.hash)
         {
             output_info_type info;
-            info.point = output.output;
-            info.value = output.value;
+            info.point = output.second.output;
+            info.value = output.second.value;
             out.push_back(info);
         }
     }
@@ -312,7 +314,9 @@ void watcher::history_fetched(const std::error_code& ec,
                 max_height = row.spend_height + 1;
         }
         txo_type output = {row.output, row.value, row.spend};
-        addresses_[address].outputs.push_back(output);
+
+        std::string id = utxo_to_id(output.output);
+        addresses_[address].outputs[id] = output;
     }
     addresses_[address].last_height = max_height;
 
@@ -372,6 +376,13 @@ void watcher::sent_tx(const std::error_code& ec)
     // The history update process will handle this for now.
 
     std::cout << "Tx sent"  << std::endl;
+}
+
+std::string watcher::utxo_to_id(output_point& pt)
+{
+    std::string id(encode_hex(pt.hash));
+    id.append(std::to_string(pt.index));
+    return id;
 }
 
 /**

@@ -99,7 +99,7 @@ private:
      */
     struct address_row {
         size_t last_height;
-        std::vector<txo_type> outputs;
+        std::unordered_map<std::string, txo_type> outputs;
     };
 
     // Addresses we care about:
@@ -141,6 +141,8 @@ private:
     void got_tx_mem(const std::error_code& ec, const transaction_type& tx,
         hash_digest txid);
     void sent_tx(const std::error_code& ec);
+
+    std::string utxo_to_id(output_point& pt);
 
     // Query thread stuff:
     obelisk_query next_query();
