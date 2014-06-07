@@ -468,6 +468,7 @@ void watcher::do_query(const obelisk_query& query)
     }
     threadpool pool(1);
     obelisk::fullnode_interface fullnode(pool, server);
+    usleep(100000); // OMG WTF!
 
     // Make the request:
     request_done_ = false;
@@ -528,6 +529,7 @@ void watcher::do_query(const obelisk_query& query)
 
     // Wait for results:
     int timeout = 0;
+    usleep(100000); // OMG WTF!
     while (!request_done_ && timeout < 100)
     {
         fullnode.update();
