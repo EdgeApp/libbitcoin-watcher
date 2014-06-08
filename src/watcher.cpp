@@ -299,10 +299,16 @@ void watcher::history_fetched(const std::error_code& ec,
             << ec.message() << std::endl;
         return;
     }
+    std::vector<blockchain::history_row> history_sorted(history.begin(), history.end());
+    std::sort(history_sorted.begin(), history_sorted.end(),
+              [](const blockchain::history_row a,
+                 const blockchain::history_row& b) {
+        return a.output_height < b.output_height;
+    });
 
     // Update our state with the new info:
     size_t max_height = addresses_[address].last_height;
-    for (auto row: history)
+    for (auto row: history_sorted)
     {
         enqueue_tx_query(row.output.hash);
         if (max_height <= row.output_height)
