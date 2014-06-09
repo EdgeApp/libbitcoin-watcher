@@ -90,6 +90,7 @@ private:
      */
     struct txo_type {
         output_point output;
+        size_t output_height;
         uint64_t value;
         input_point spend; // null if this output hasn't been spent
     };

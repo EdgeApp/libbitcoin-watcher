@@ -94,6 +94,7 @@ BC_API data_chunk watcher::serialize()
             serial.write_hash(output.second.output.hash);
             serial.write_4_bytes(output.second.output.index);
             serial.write_8_bytes(output.second.value);
+            serial.write_8_bytes(output.second.output_height);
             serial.write_hash(output.second.spend.hash);
             serial.write_4_bytes(output.second.spend.index);
         }
@@ -162,6 +163,7 @@ BC_API bool watcher::load(const data_chunk& data)
                     row.output.hash = serial.read_hash();
                     row.output.index = serial.read_4_bytes();
                     row.value = serial.read_8_bytes();
+                    row.output_height = serial.read_8_bytes();
                     row.spend.hash = serial.read_hash();
                     row.spend.index = serial.read_4_bytes();
 
@@ -253,8 +255,11 @@ BC_API output_info_list watcher::get_utxos(const payment_address& address)
     if (row == addresses_.end())
         return out;
 
-    for (auto& output: row->second.outputs)
-    {
+    for (auto& output: row->second.outputs) {
+        // Skip outputs that are pending
+        if (!output.second.output_height)
+            continue;
+
         if (null_hash == output.second.spend.hash)
         {
             output_info_type info;
@@ -301,7 +306,7 @@ void watcher::history_fetched(const std::error_code& ec,
     }
     std::vector<blockchain::history_row> history_sorted(history.begin(), history.end());
     std::sort(history_sorted.begin(), history_sorted.end(),
-              [](const blockchain::history_row a,
+              [](const blockchain::history_row& a,
                  const blockchain::history_row& b) {
         return a.output_height < b.output_height;
     });
@@ -319,7 +324,7 @@ void watcher::history_fetched(const std::error_code& ec,
             if (max_height <= row.spend_height)
                 max_height = row.spend_height + 1;
         }
-        txo_type output = {row.output, row.value, row.spend};
+        txo_type output = {row.output, row.output_height, row.value, row.spend};
 
         std::string id = utxo_to_id(output.output);
         addresses_[address].outputs[id] = output;
