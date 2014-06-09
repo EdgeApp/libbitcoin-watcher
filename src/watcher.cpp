@@ -319,13 +319,7 @@ void watcher::history_fetched(const std::error_code& ec,
         enqueue_tx_query(row.output.hash);
         if (max_height <= row.output_height)
             max_height = row.output_height + 1;
-        if (null_hash != row.spend.hash)
-        {
-            enqueue_tx_query(row.spend.hash);
-            if (max_height <= row.spend_height)
-                max_height = row.spend_height + 1;
-        }
-        else
+        if (null_hash == row.spend.hash)
         {
             min_spend_height = std::min(min_spend_height, row.output_height);
         }
