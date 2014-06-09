@@ -313,6 +313,7 @@ void watcher::history_fetched(const std::error_code& ec,
 
     // Update our state with the new info:
     size_t max_height = addresses_[address].last_height;
+    size_t min_spend_height = (size_t) - 1;
     for (auto row: history_sorted)
     {
         enqueue_tx_query(row.output.hash);
@@ -324,12 +325,17 @@ void watcher::history_fetched(const std::error_code& ec,
             if (max_height <= row.spend_height)
                 max_height = row.spend_height + 1;
         }
+        else
+        {
+            min_spend_height = std::min(min_spend_height, row.output_height);
+        }
         txo_type output = {row.output, row.output_height, row.value, row.spend};
 
         std::string id = utxo_to_id(output.output);
         addresses_[address].outputs[id] = output;
     }
-    addresses_[address].last_height = max_height;
+    // The last height is the earliest unspent output
+    addresses_[address].last_height = std::min(min_spend_height, max_height);
 
     std::cout << "Got address " << address.encoded() << std::endl;
 }
