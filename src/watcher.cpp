@@ -7,7 +7,7 @@
  * it under the terms of the GNU Affero General Public License as
  * published by the Free Software Foundation, either version 3 of the
  * License, or (at your option) any later version.
- *
+:*
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -105,7 +105,8 @@ BC_API data_chunk watcher::serialize()
     {
         serial.write_byte(id_tx_row);
         serial.write_hash(row.first);
-        serial.set_iterator(satoshi_save(row.second, serial.iterator()));
+        serial.set_iterator(satoshi_save(row.second.tx, serial.iterator()));
+        serial.write_byte(row.second.relevant);
     }
 
     // Pending tx list:
@@ -134,7 +135,7 @@ BC_API bool watcher::load(const data_chunk& data)
 {
     auto serial = make_deserializer(data.begin(), data.end());
     std::unordered_map<payment_address, address_row> addresses;
-    std::unordered_map<hash_digest, transaction_type> tx_table;
+    std::unordered_map<hash_digest, tx_row> tx_table;
     std::deque<pending_get_tx> get_tx_queue;
 
     try
@@ -179,7 +180,8 @@ BC_API bool watcher::load(const data_chunk& data)
                     satoshi_load(serial.iterator(), data.end(), tx);
                     auto step = serial.iterator() + satoshi_raw_size(tx);
                     serial.set_iterator(step);
-                    tx_table[hash] = tx;
+                    bool relevant = serial.read_byte();
+                    tx_table[hash] = tx_row{tx, relevant};
                     break;
                 }
 
@@ -227,7 +229,7 @@ BC_API transaction_type watcher::find_tx(hash_digest txid)
 {
     auto tx = tx_table_.find(txid);
     if (tx != tx_table_.end())
-        return tx->second;
+        return tx->second.tx;
     else
         return transaction_type();
 }
@@ -275,9 +277,9 @@ BC_API output_info_list watcher::get_utxos(const payment_address& address)
  * Places a transaction in the queue if we don't already have it in the db.
  * Assumes the mutex is already being held.
  */
-void watcher::enqueue_tx_query(hash_digest txid, bool mempool)
+void watcher::enqueue_tx_query(hash_digest txid, hash_digest parent_txid, bool mempool)
 {
-    get_tx_queue_.push_back(pending_get_tx{txid, mempool});
+    get_tx_queue_.push_back(pending_get_tx{txid, parent_txid, mempool});
 }
 
 /**
@@ -285,11 +287,51 @@ void watcher::enqueue_tx_query(hash_digest txid, bool mempool)
  * updated.
  * Assumes the mutex is already being held.
  */
-void watcher::insert_tx(const transaction_type& tx)
+void watcher::insert_tx(const transaction_type& tx, const hash_digest parent_txid)
 {
-    tx_table_[hash_transaction(tx)] = tx;
+    tx_table_[hash_transaction(tx)] = tx_row{tx, parent_txid == null_hash};
+
     if (cb_)
-        cb_(tx);
+    {
+        if (has_all_prev_outputs(tx))
+        {
+            std::cout << "Calling cb with tx" << std::endl;
+            cb_(tx);
+        }
+        else if (has_all_prev_outputs(tx_table_[parent_txid].tx))
+        {
+            std::cout << "Calling cb for parent" << std::endl;
+            cb_(tx_table_[parent_txid].tx);
+        }
+    }
+}
+
+/**
+ * Enque all previous txs for this transaction
+ * Assumes the mutex is already being held.
+ */
+void watcher::enque_all_inputs(transaction_type& tx)
+{
+    for (auto& input : tx.inputs)
+    {
+        enqueue_tx_query(input.previous_output.hash, hash_transaction(tx));
+    }
+}
+
+/**
+ * Fetches transactions of the tx's inputs
+ *
+ * Assumes the mutex is already being held.
+ */
+bool watcher::has_all_prev_outputs(const transaction_type& tx)
+{
+    for (auto& input : tx.inputs)
+    {
+        auto& prev = input.previous_output;
+        if (tx_table_.find(prev.hash) == tx_table_.end())
+            return false;
+    }
+    return true;
 }
 
 void watcher::history_fetched(const std::error_code& ec,
@@ -312,29 +354,22 @@ void watcher::history_fetched(const std::error_code& ec,
     });
 
     // Update our state with the new info:
-    size_t max_height = addresses_[address].last_height;
-    size_t min_spend_height = (size_t) - 1;
     for (auto row: history_sorted)
     {
         enqueue_tx_query(row.output.hash);
-        if (max_height <= row.output_height)
-            max_height = row.output_height + 1;
-        if (null_hash == row.spend.hash)
-        {
-            min_spend_height = std::min(min_spend_height, row.output_height);
-        }
-        txo_type output = {row.output, row.output_height, row.value, row.spend};
 
+        txo_type output = {row.output, row.output_height, row.value, row.spend};
         std::string id = utxo_to_id(output.output);
         addresses_[address].outputs[id] = output;
     }
-    // The last height is the earliest unspent output
-    addresses_[address].last_height = 0; //std::min(min_spend_height, max_height);
+    addresses_[address].last_height = 0;
 
     std::cout << "Got address " << address.encoded() << std::endl;
 }
 
-void watcher::got_tx(const std::error_code& ec, const transaction_type& tx)
+void watcher::got_tx(const std::error_code& ec,
+                     const transaction_type& tx,
+                     hash_digest parent_txid)
 {
     std::lock_guard<std::mutex> m(mutex_);
     request_done_ = true;
@@ -347,11 +382,11 @@ void watcher::got_tx(const std::error_code& ec, const transaction_type& tx)
     }
 
     // Update our state with the new info:
-    insert_tx(tx);
+    insert_tx(tx, parent_txid);
 }
 
 void watcher::got_tx_mem(const std::error_code& ec,
-    const transaction_type& tx, hash_digest txid)
+    const transaction_type& tx, hash_digest txid, hash_digest parent_txid)
 {
     std::lock_guard<std::mutex> m(mutex_);
     request_done_ = true;
@@ -359,7 +394,7 @@ void watcher::got_tx_mem(const std::error_code& ec,
     if (ec == error::not_found)
     {
         // Try the blockchain instead:
-        enqueue_tx_query(txid, false);
+        enqueue_tx_query(txid, parent_txid, false);
         return;
     }
     else if (ec)
@@ -370,7 +405,7 @@ void watcher::got_tx_mem(const std::error_code& ec,
     }
 
     // Update our state with the new info:
-    insert_tx(tx);
+    insert_tx(tx, parent_txid);
 }
 
 void watcher::sent_tx(const std::error_code& ec)
@@ -426,6 +461,11 @@ watcher::obelisk_query watcher::next_query()
                 out.type = obelisk_query::get_tx_mem;
             out.txid = pending.txid;
             return out;
+        }
+        else if (pending.parent_txid == null_hash
+                 && !tx_table_[pending.txid].relevant)
+        {
+            enque_all_inputs(tx_table_[pending.txid].tx);
         }
     }
 
@@ -513,10 +553,10 @@ void watcher::do_query(const obelisk_query& query)
         {
             std::cout << "Get tx " << encode_hex(query.txid) << std::endl;
 
-            auto handler = [this](const std::error_code& ec,
+            auto handler = [this, query](const std::error_code& ec,
                 const transaction_type& tx)
             {
-                got_tx(ec, tx);
+                got_tx(ec, tx, query.parent_txid);
             };
             fullnode.blockchain.fetch_transaction(query.txid, handler);
             break;
@@ -526,10 +566,10 @@ void watcher::do_query(const obelisk_query& query)
             std::cout << "Get tx mem " << encode_hex(query.txid) << std::endl;
 
             auto txid = query.txid;
-            auto handler = [this, txid](const std::error_code& ec,
+            auto handler = [this, txid, query](const std::error_code& ec,
                 const transaction_type& tx)
             {
-                got_tx_mem(ec, tx, txid);
+                got_tx_mem(ec, tx, txid, query.parent_txid);
             };
             fullnode.transaction_pool.fetch_transaction(query.txid, handler);
             break;
