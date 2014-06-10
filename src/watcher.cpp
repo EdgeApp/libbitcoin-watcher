@@ -329,7 +329,7 @@ void watcher::history_fetched(const std::error_code& ec,
         addresses_[address].outputs[id] = output;
     }
     // The last height is the earliest unspent output
-    addresses_[address].last_height = std::min(min_spend_height, max_height);
+    addresses_[address].last_height = 0; //std::min(min_spend_height, max_height);
 
     std::cout << "Got address " << address.encoded() << std::endl;
 }
