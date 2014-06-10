@@ -80,6 +80,8 @@ private:
         size_t from_height;
         // get_tx, get_tx_mem:
         hash_digest txid;
+        // use for fetching prev outputs
+        hash_digest parent_txid;
         // send_tx:
         transaction_type tx;
     };
@@ -107,12 +109,17 @@ private:
     std::unordered_map<payment_address, address_row> addresses_;
 
     // Transaction table:
-    std::unordered_map<hash_digest, transaction_type> tx_table_;
+    struct tx_row {
+        transaction_type tx;
+        bool relevant;
+    };
+    std::unordered_map<hash_digest, tx_row> tx_table_;
 
     // Stuff waiting for the query thread:
     size_t last_address_;
     struct pending_get_tx {
         hash_digest txid;
+        hash_digest parent_txid;
         bool mempool;
     };
     std::deque<pending_get_tx> get_tx_queue_;
@@ -126,21 +133,28 @@ private:
     // Server connection info:
     std::string server_;
 
+    // Server poll sleep
+    size_t pool_sleep = 5;
+
     // Obelisk query thread:
     std::atomic<bool> shutdown_;
     std::atomic<bool> request_done_;
     std::thread looper_;
 
     // Database update (the mutex must be held before calling):
-    void enqueue_tx_query(hash_digest txid, bool mempool=true);
-    void insert_tx(const transaction_type& tx);
+    void enqueue_tx_query(hash_digest txid, hash_digest parent_txid=null_hash,
+                          bool mempool=true);
+    void insert_tx(const transaction_type& tx, const hash_digest parent_txid);
+    void enque_all_inputs(const transaction_type& tx);
+    bool has_all_prev_outputs(const hash_digest& txid);
 
     // Callbacks (these grab the mutex):
     void history_fetched(const std::error_code& ec,
         const payment_address& address, const blockchain::history_list& history);
-    void got_tx(const std::error_code& ec, const transaction_type& tx);
+    void got_tx(const std::error_code& ec, const transaction_type& tx,
+                const hash_digest parent_txid);
     void got_tx_mem(const std::error_code& ec, const transaction_type& tx,
-        hash_digest txid);
+                    hash_digest txid, hash_digest parent_txid);
     void sent_tx(const std::error_code& ec);
 
     std::string utxo_to_id(output_point& pt);
