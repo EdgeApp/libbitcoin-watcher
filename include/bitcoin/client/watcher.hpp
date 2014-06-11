@@ -66,7 +66,7 @@ public:
 
 private:
     // Guards access to object state:
-    std::mutex mutex_;
+    std::recursive_mutex mutex_;
 
     /**
      * A pending query to the obelisk server.
