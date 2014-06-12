@@ -60,6 +60,8 @@ public:
     BC_API void set_callback(callback& cb);
 
     BC_API output_info_list get_utxos(const payment_address& address);
+    BC_API size_t get_last_block_height();
+    BC_API size_t get_tx_height(hash_digest txid);
 
     watcher(const watcher& copy) = delete;
     watcher& operator=(const watcher& copy) = delete;
@@ -73,7 +75,7 @@ private:
      */
     struct obelisk_query {
         enum {
-            none, address_history, get_tx, get_tx_mem, send_tx
+            none, address_history, get_tx, get_tx_mem, send_tx, block_height
         } type;
         // address_history:
         payment_address address;
@@ -85,6 +87,12 @@ private:
         // send_tx:
         transaction_type tx;
     };
+
+    /**
+     * Last block height...duh
+     */
+    size_t last_block_height_;
+    bool check_height = true;
 
     /**
      * A transaction output putting funds into an address. If the spend
@@ -111,6 +119,7 @@ private:
     // Transaction table:
     struct tx_row {
         transaction_type tx;
+        size_t output_height;
         bool relevant;
     };
     std::unordered_map<hash_digest, tx_row> tx_table_;
@@ -149,6 +158,7 @@ private:
     bool has_all_prev_outputs(const hash_digest& txid);
 
     // Callbacks (these grab the mutex):
+    void height_fetched(const std::error_code& ec, size_t height);
     void history_fetched(const std::error_code& ec,
         const payment_address& address, const blockchain::history_list& history);
     void got_tx(const std::error_code& ec, const transaction_type& tx,

@@ -47,19 +47,19 @@ BC_API watcher::watcher()
 
 BC_API void watcher::disconnect()
 {
-    std::lock_guard<std::mutex> m(mutex_);
+    std::lock_guard<std::recursive_mutex> m(mutex_);
     server_ = "";
 }
 
 BC_API void watcher::connect(const std::string& server)
 {
-    std::lock_guard<std::mutex> m(mutex_);
+    std::lock_guard<std::recursive_mutex> m(mutex_);
     server_ = server;
 }
 
 BC_API void watcher::send_tx(const transaction_type& tx)
 {
-    std::lock_guard<std::mutex> m(mutex_);
+    std::lock_guard<std::recursive_mutex> m(mutex_);
     send_tx_queue_.push_back(tx);
 }
 
@@ -68,7 +68,7 @@ BC_API void watcher::send_tx(const transaction_type& tx)
  */
 BC_API data_chunk watcher::serialize()
 {
-    std::lock_guard<std::mutex> m(mutex_);
+    std::lock_guard<std::recursive_mutex> m(mutex_);
 
     std::ostringstream stream;
     auto serial = make_serializer(std::ostreambuf_iterator<char>(stream));
@@ -106,6 +106,7 @@ BC_API data_chunk watcher::serialize()
         serial.write_byte(id_tx_row);
         serial.write_hash(row.first);
         serial.set_iterator(satoshi_save(row.second.tx, serial.iterator()));
+        serial.write_8_bytes(row.second.output_height);
         serial.write_byte(row.second.relevant);
     }
 
@@ -180,8 +181,9 @@ BC_API bool watcher::load(const data_chunk& data)
                     satoshi_load(serial.iterator(), data.end(), tx);
                     auto step = serial.iterator() + satoshi_raw_size(tx);
                     serial.set_iterator(step);
+                    size_t height = serial.read_8_bytes();
                     bool relevant = serial.read_byte();
-                    tx_table[hash] = tx_row{tx, relevant};
+                    tx_table[hash] = tx_row{tx, height, relevant};
                     break;
                 }
 
@@ -210,7 +212,7 @@ BC_API bool watcher::load(const data_chunk& data)
 
 BC_API void watcher::watch_address(const payment_address& address)
 {
-    std::lock_guard<std::mutex> m(mutex_);
+    std::lock_guard<std::recursive_mutex> m(mutex_);
     addresses_[address] = address_row{0, std::unordered_map<std::string, txo_type>()};
 }
 
@@ -220,14 +222,14 @@ BC_API void watcher::watch_address(const payment_address& address)
  */
 BC_API void watcher::prioritize_address(const payment_address& address)
 {
-    std::lock_guard<std::mutex> m(mutex_);
+    std::lock_guard<std::recursive_mutex> m(mutex_);
     priority_address_ = address;
 }
 
 
 BC_API transaction_type watcher::find_tx(hash_digest txid)
 {
-    std::lock_guard<std::mutex> m(mutex_);
+    std::lock_guard<std::recursive_mutex> m(mutex_);
     auto tx = tx_table_.find(txid);
     if (tx != tx_table_.end())
         return tx->second.tx;
@@ -241,7 +243,7 @@ BC_API transaction_type watcher::find_tx(hash_digest txid)
  */
 BC_API void watcher::set_callback(callback& cb)
 {
-    std::lock_guard<std::mutex> m(mutex_);
+    std::lock_guard<std::recursive_mutex> m(mutex_);
     cb_ = cb;
 }
 
@@ -251,7 +253,7 @@ BC_API void watcher::set_callback(callback& cb)
  */
 BC_API output_info_list watcher::get_utxos(const payment_address& address)
 {
-    std::lock_guard<std::mutex> m(mutex_);
+    std::lock_guard<std::recursive_mutex> m(mutex_);
     output_info_list out;
 
     auto row = addresses_.find(address);
@@ -274,6 +276,22 @@ BC_API output_info_list watcher::get_utxos(const payment_address& address)
     return out;
 }
 
+BC_API size_t watcher::get_last_block_height()
+{
+    std::lock_guard<std::recursive_mutex> m(mutex_);
+    return last_block_height_;
+}
+
+BC_API size_t watcher::get_tx_height(hash_digest txid)
+{
+    std::lock_guard<std::recursive_mutex> m(mutex_);
+    auto row = tx_table_.find(txid);
+    if (row == tx_table_.end())
+        return 0;
+    else
+        return row->second.output_height;
+}
+
 /**
  * Places a transaction in the queue if we don't already have it in the db.
  * Assumes the mutex is already being held.
@@ -294,7 +312,7 @@ void watcher::enqueue_tx_query(hash_digest txid, hash_digest parent_txid, bool m
 void watcher::insert_tx(const transaction_type& tx, const hash_digest parent_txid)
 {
     hash_digest txid = hash_transaction(tx);
-    tx_table_[txid] = tx_row{tx, parent_txid == null_hash};
+    tx_table_[txid] = tx_row{tx, 0, parent_txid == null_hash};
 
     if (cb_)
     {
@@ -352,10 +370,26 @@ bool watcher::has_all_prev_outputs(const hash_digest& txid)
     return true;
 }
 
+void watcher::height_fetched(const std::error_code& ec, size_t height)
+{
+    std::lock_guard<std::recursive_mutex> m(mutex_);
+    request_done_ = true;
+
+    if (ec)
+    {
+        std::cerr << "balance: Failed to fetch last block height: "
+            << ec.message() << std::endl;
+        return;
+    }
+    last_block_height_ = height;
+
+    std::cout << "Last Height " << height << std::endl;
+}
+
 void watcher::history_fetched(const std::error_code& ec,
     const payment_address& address, const blockchain::history_list& history)
 {
-    std::lock_guard<std::mutex> m(mutex_);
+    std::lock_guard<std::recursive_mutex> m(mutex_);
     request_done_ = true;
 
     if (ec)
@@ -375,8 +409,18 @@ void watcher::history_fetched(const std::error_code& ec,
     for (auto row: history_sorted)
     {
         enqueue_tx_query(row.output.hash, null_hash);
+        auto tx = tx_table_.find(row.output.hash);
+        if (tx != tx_table_.end())
+            tx->second.output_height = row.output_height;
+
         if (row.spend.hash != null_hash)
+        {
             enqueue_tx_query(row.spend.hash);
+            auto tx = tx_table_.find(row.spend.hash);
+            if (tx != tx_table_.end())
+                tx->second.output_height = row.spend_height;
+        }
+
 
         txo_type output = {row.output, row.output_height, row.value, row.spend};
         std::string id = utxo_to_id(output.output);
@@ -391,7 +435,7 @@ void watcher::got_tx(const std::error_code& ec,
                      const transaction_type& tx,
                      hash_digest parent_txid)
 {
-    std::lock_guard<std::mutex> m(mutex_);
+    std::lock_guard<std::recursive_mutex> m(mutex_);
     request_done_ = true;
 
     if (ec)
@@ -408,7 +452,7 @@ void watcher::got_tx(const std::error_code& ec,
 void watcher::got_tx_mem(const std::error_code& ec,
     const transaction_type& tx, hash_digest txid, hash_digest parent_txid)
 {
-    std::lock_guard<std::mutex> m(mutex_);
+    std::lock_guard<std::recursive_mutex> m(mutex_);
     request_done_ = true;
 
     if (ec == error::not_found)
@@ -430,7 +474,7 @@ void watcher::got_tx_mem(const std::error_code& ec,
 
 void watcher::sent_tx(const std::error_code& ec)
 {
-    std::lock_guard<std::mutex> m(mutex_);
+    std::lock_guard<std::recursive_mutex> m(mutex_);
     request_done_ = true;
 
     if (ec)
@@ -457,7 +501,7 @@ std::string watcher::utxo_to_id(output_point& pt)
  */
 watcher::obelisk_query watcher::next_query()
 {
-    std::lock_guard<std::mutex> m(mutex_);
+    std::lock_guard<std::recursive_mutex> m(mutex_);
     obelisk_query out;
 
     // Process pending sends, if any:
@@ -508,10 +552,19 @@ watcher::obelisk_query watcher::next_query()
         return out;
     }
 
+    if (check_height)
+    {
+        check_height = false;
+        out.type = obelisk_query::block_height;
+        return out;
+    }
     // Advance the counter:
     ++last_address_;
     if (addresses_.size() <= last_address_)
+    {
         last_address_ = 0;
+        check_height = true;
+    }
 
     // Find the indexed address:
     auto it = addresses_.begin();
@@ -528,7 +581,7 @@ watcher::obelisk_query watcher::next_query()
  */
 std::string watcher::get_server()
 {
-    std::lock_guard<std::mutex> m(mutex_);
+    std::lock_guard<std::recursive_mutex> m(mutex_);
     return server_;
 }
 
@@ -553,6 +606,17 @@ void watcher::do_query(const obelisk_query& query)
     request_done_ = false;
     switch (query.type)
     {
+        case obelisk_query::block_height:
+        {
+            std::cout << "Fetch block height " << std::endl;
+
+            auto handler = [this](const std::error_code& ec, size_t height)
+            {
+                height_fetched(ec, height);
+            };
+            fullnode.blockchain.fetch_last_height(handler);
+            break;
+        }
         case obelisk_query::address_history:
         {
             std::cout << "Get address " << query.address.encoded() << std::endl;

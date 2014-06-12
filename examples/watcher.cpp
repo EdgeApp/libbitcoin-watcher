@@ -21,6 +21,8 @@ private:
     void cmd_connect(std::stringstream& args);
     void cmd_disconnect(std::stringstream& args);
     void cmd_watch(std::stringstream& args);
+    void cmd_height();
+    void cmd_tx_height(std::stringstream& args);
     void cmd_prioritize(std::stringstream& args);
     void cmd_utxos(std::stringstream& args);
     void cmd_save(std::stringstream& args);
@@ -28,6 +30,7 @@ private:
 
     void callback(const libbitcoin::transaction_type& tx);
 
+    bc::hash_digest read_txid(std::stringstream& args);
     bool read_address(std::stringstream& args, bc::payment_address& out);
     bool read_filename(std::stringstream& args, std::string& out);
 
@@ -67,6 +70,8 @@ int cli::run()
         else if (command == "connect")      cmd_connect(reader);
         else if (command == "disconnect")   cmd_disconnect(reader);
         else if (command == "watch")        cmd_watch(reader);
+        else if (command == "height")       cmd_height();
+        else if (command == "txheight")     cmd_tx_height(reader);
         else if (command == "prioritize")   cmd_prioritize(reader);
         else if (command == "utxos")        cmd_utxos(reader);
         else if (command == "save")         cmd_save(reader);
@@ -114,6 +119,19 @@ void cli::cmd_connect(std::stringstream& args)
 void cli::cmd_disconnect(std::stringstream& args)
 {
     watcher.disconnect();
+}
+
+void cli::cmd_height()
+{
+    std::cout << watcher.get_last_block_height() << std::endl;
+}
+
+void cli::cmd_tx_height(std::stringstream& args)
+{
+    bc::hash_digest txid = read_txid(args);
+    if (txid == bc::null_hash)
+        return;
+    std::cout << watcher.get_tx_height(txid) << std::endl;
 }
 
 void cli::cmd_watch(std::stringstream& args)
@@ -191,6 +209,18 @@ void cli::callback(const libbitcoin::transaction_type& tx)
 {
     auto txid = libbitcoin::encode_hex(libbitcoin::hash_transaction(tx));
     std::cout << "got transaction " << txid << std::endl;
+}
+
+bc::hash_digest cli::read_txid(std::stringstream& args)
+{
+    std::string arg;
+    args >> arg;
+    if (!arg.size())
+    {
+        std::cout << "no txid given" << std::endl;
+        return bc::null_hash;
+    }
+    return bc::decode_hash(arg);
 }
 
 bool cli::read_address(std::stringstream& args, bc::payment_address& out)
