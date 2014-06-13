@@ -258,7 +258,7 @@ BC_API void watcher::watch_tx_mem(const hash_digest& txid)
         watch_txs_[txid] = 0;
     }
     watch_txs_[txid]++;
-    std::cout << "Added " << txid << std::endl;
+    std::cout << "Watching tx " << txid << std::endl;
 }
 
 /**
@@ -347,6 +347,10 @@ BC_API size_t watcher::get_tx_height(hash_digest txid)
  */
 void watcher::enqueue_tx_query(hash_digest txid, hash_digest parent_txid, bool mempool)
 {
+    // Only queue txs we don't have
+    if (tx_table_.find(txid) != tx_table_.end())
+        return;
+
     if (mempool)
         get_tx_queue_.push_back(pending_get_tx{txid, parent_txid, mempool});
     else
@@ -582,16 +586,13 @@ watcher::obelisk_query watcher::next_query()
     {
         auto pending = get_tx_queue_.front();
         get_tx_queue_.pop_front();
-        auto tx_row = tx_table_.find(pending.txid);
-        if (tx_row == tx_table_.end())
-        {
-            out.type = obelisk_query::get_tx;
-            if (pending.mempool)
-                out.type = obelisk_query::get_tx_mem;
-            out.txid = pending.txid;
-            out.parent_txid = pending.parent_txid;
-            return out;
-        }
+
+        out.type = obelisk_query::get_tx;
+        if (pending.mempool)
+            out.type = obelisk_query::get_tx_mem;
+        out.txid = pending.txid;
+        out.parent_txid = pending.parent_txid;
+        return out;
     }
 
     // Handle the high-priority address, if we have one:
@@ -774,8 +775,8 @@ void watcher::loop()
             do_query(query);
         else
             std::cout << "Skipping" << std::endl;
-        if (query.type == obelisk_query::get_tx
-                || query.type == obelisk_query::get_tx_mem)
+
+        if (!get_tx_queue_.empty())
             poll_sleep = 0;
         else
             poll_sleep = 5;
