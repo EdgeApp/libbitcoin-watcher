@@ -163,8 +163,7 @@ private:
     std::thread looper_;
 
     // Database update (the mutex must be held before calling):
-    void enqueue_tx_query(hash_digest txid, hash_digest parent_txid=null_hash,
-                          bool mempool=true);
+    void enqueue_tx_query(hash_digest txid, hash_digest parent_txid, bool mempool=true);
     void insert_tx(const transaction_type& tx, const hash_digest parent_txid);
     void enque_all_inputs(const transaction_type& tx);
     bool has_all_prev_outputs(const hash_digest& txid);

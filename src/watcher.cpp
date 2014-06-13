@@ -458,22 +458,20 @@ void watcher::history_fetched(const std::error_code& ec,
     });
 
     // Update our state with the new info:
-    for (auto row: history_sorted)
+    for (auto& row: history_sorted)
     {
-        std::cout << row.output.hash << std::endl;
-        enqueue_tx_query(row.output.hash, null_hash);
+        enqueue_tx_query(row.output.hash, null_hash, true);
         auto tx = tx_table_.find(row.output.hash);
         if (tx != tx_table_.end())
             tx->second.output_height = row.output_height;
 
         if (row.spend.hash != null_hash)
         {
-            enqueue_tx_query(row.spend.hash);
+            enqueue_tx_query(row.spend.hash, null_hash, true);
             auto tx = tx_table_.find(row.spend.hash);
             if (tx != tx_table_.end())
                 tx->second.output_height = row.spend_height;
         }
-
         txo_type output = {row.output, row.output_height, row.value, row.spend};
         std::string id = utxo_to_id(output.output);
 
