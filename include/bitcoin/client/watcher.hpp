@@ -53,6 +53,7 @@ public:
     BC_API bool load(const data_chunk& data);
 
     BC_API void watch_address(const payment_address& address);
+    BC_API void watch_tx_mem(const hash_digest& txid);
     BC_API void prioritize_address(const payment_address& address);
     BC_API transaction_type find_tx(hash_digest txid);
 
@@ -124,6 +125,17 @@ private:
     };
     std::unordered_map<hash_digest, tx_row> tx_table_;
 
+    /**
+     * If mem pool tx outputs, mark those outputs as pending so they are
+     * excluded from utxos
+     */
+    std::unordered_map<std::string, bool> output_pending_;
+    /**
+     * Check mem pool for these transactions, they are removed once they are in
+     * the blockchain
+     */
+    std::unordered_map<hash_digest, size_t> watch_txs_;
+
     // Stuff waiting for the query thread:
     size_t last_address_;
     struct pending_get_tx {
@@ -143,7 +155,7 @@ private:
     std::string server_;
 
     // Server poll sleep
-    size_t pool_sleep = 5;
+    size_t poll_sleep = 5;
 
     // Obelisk query thread:
     std::atomic<bool> shutdown_;
@@ -156,6 +168,7 @@ private:
     void insert_tx(const transaction_type& tx, const hash_digest parent_txid);
     void enque_all_inputs(const transaction_type& tx);
     bool has_all_prev_outputs(const hash_digest& txid);
+    void mark_outputs_pending(const transaction_type& tx, bool pending);
 
     // Callbacks (these grab the mutex):
     void height_fetched(const std::error_code& ec, size_t height);

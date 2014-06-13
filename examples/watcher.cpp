@@ -23,6 +23,7 @@ private:
     void cmd_watch(std::stringstream& args);
     void cmd_height();
     void cmd_tx_height(std::stringstream& args);
+    void cmd_tx_watch(std::stringstream& args);
     void cmd_prioritize(std::stringstream& args);
     void cmd_utxos(std::stringstream& args);
     void cmd_save(std::stringstream& args);
@@ -72,6 +73,7 @@ int cli::run()
         else if (command == "watch")        cmd_watch(reader);
         else if (command == "height")       cmd_height();
         else if (command == "txheight")     cmd_tx_height(reader);
+        else if (command == "txwatch")      cmd_tx_watch(reader);
         else if (command == "prioritize")   cmd_prioritize(reader);
         else if (command == "utxos")        cmd_utxos(reader);
         else if (command == "save")         cmd_save(reader);
@@ -132,6 +134,14 @@ void cli::cmd_tx_height(std::stringstream& args)
     if (txid == bc::null_hash)
         return;
     std::cout << watcher.get_tx_height(txid) << std::endl;
+}
+
+void cli::cmd_tx_watch(std::stringstream& args)
+{
+    bc::hash_digest txid = read_txid(args);
+    if (txid == bc::null_hash)
+        return;
+    watcher.watch_tx_mem(txid);
 }
 
 void cli::cmd_watch(std::stringstream& args)

@@ -32,6 +32,8 @@ constexpr uint8_t id_address_row = 0x10;
 constexpr uint8_t id_address_output = 0x11;
 constexpr uint8_t id_tx_row = 0x20;
 constexpr uint8_t id_get_tx_row = 0x30;
+constexpr uint8_t id_pending_outputs = 0x40;
+constexpr uint8_t id_watch_txs = 0x50;
 
 BC_API watcher::~watcher()
 {
@@ -117,6 +119,21 @@ BC_API data_chunk watcher::serialize()
         serial.write_hash(row.txid);
     }
 
+    // Output status
+    for (auto row: output_pending_)
+    {
+        serial.write_byte(id_pending_outputs);
+        serial.write_string(row.first);
+        serial.write_byte(row.second);
+    }
+
+    for (auto row: watch_txs_)
+    {
+        serial.write_byte(id_watch_txs);
+        serial.write_hash(row.first);
+        serial.write_8_bytes(row.second);
+    }
+
     // OMG HAX!
     std::string str = stream.str();
     auto data = reinterpret_cast<const uint8_t*>(str.data());
@@ -195,6 +212,22 @@ BC_API bool watcher::load(const data_chunk& data)
                     break;
                 }
 
+                case id_pending_outputs:
+                {
+                    std::string txid = serial.read_string();
+                    bool pending = serial.read_byte();
+                    output_pending_[txid] = pending;
+                    break;
+                }
+
+                case id_watch_txs:
+                {
+                    hash_digest txid = serial.read_hash();
+                    size_t count = serial.read_8_bytes();
+                    watch_txs_[txid] = count;
+                    break;
+                }
+
                 default:
                     return false;
             }
@@ -214,6 +247,18 @@ BC_API void watcher::watch_address(const payment_address& address)
 {
     std::lock_guard<std::recursive_mutex> m(mutex_);
     addresses_[address] = address_row{0, std::unordered_map<std::string, txo_type>()};
+}
+
+BC_API void watcher::watch_tx_mem(const hash_digest& txid)
+{
+    std::lock_guard<std::recursive_mutex> m(mutex_);
+    auto row = watch_txs_.find(txid);
+    if (row == watch_txs_.end())
+    {
+        watch_txs_[txid] = 0;
+    }
+    watch_txs_[txid]++;
+    std::cout << "Added " << txid << std::endl;
 }
 
 /**
@@ -265,6 +310,10 @@ BC_API output_info_list watcher::get_utxos(const payment_address& address)
         if (!output.second.output_height)
             continue;
 
+        // Skip outputs which are pending
+        if (output_pending_[utxo_to_id(output.second.output)] == true)
+            continue;
+
         if (null_hash == output.second.spend.hash)
         {
             output_info_type info;
@@ -313,6 +362,9 @@ void watcher::insert_tx(const transaction_type& tx, const hash_digest parent_txi
 {
     hash_digest txid = hash_transaction(tx);
     tx_table_[txid] = tx_row{tx, 0, parent_txid == null_hash};
+
+    // Remove from watch list
+    watch_txs_.erase(txid);
 
     if (cb_)
     {
@@ -408,6 +460,7 @@ void watcher::history_fetched(const std::error_code& ec,
     // Update our state with the new info:
     for (auto row: history_sorted)
     {
+        std::cout << row.output.hash << std::endl;
         enqueue_tx_query(row.output.hash, null_hash);
         auto tx = tx_table_.find(row.output.hash);
         if (tx != tx_table_.end())
@@ -421,9 +474,11 @@ void watcher::history_fetched(const std::error_code& ec,
                 tx->second.output_height = row.spend_height;
         }
 
-
         txo_type output = {row.output, row.output_height, row.value, row.spend};
         std::string id = utxo_to_id(output.output);
+
+        // Update output database
+        output_pending_[id] = row.output_height == 0;
         addresses_[address].outputs[id] = output;
     }
     addresses_[address].last_height = 0;
@@ -444,6 +499,7 @@ void watcher::got_tx(const std::error_code& ec,
             << ec.message() << std::endl;
         return;
     }
+    mark_outputs_pending(tx, false);
 
     // Update our state with the new info:
     insert_tx(tx, parent_txid);
@@ -467,9 +523,19 @@ void watcher::got_tx_mem(const std::error_code& ec,
             << ec.message() << std::endl;
         return;
     }
+    mark_outputs_pending(tx, true);
 
     // Update our state with the new info:
     insert_tx(tx, parent_txid);
+}
+
+void watcher::mark_outputs_pending(const transaction_type& tx, bool pending)
+{
+    for (auto t : tx.inputs)
+    {
+        std::string id = utxo_to_id(t.previous_output);
+        output_pending_[id] = pending;
+    }
 }
 
 void watcher::sent_tx(const std::error_code& ec)
@@ -564,6 +630,11 @@ watcher::obelisk_query watcher::next_query()
     {
         last_address_ = 0;
         check_height = true;
+        for (auto& txrow : watch_txs_)
+        {
+            txrow.second++;
+            enqueue_tx_query(txrow.first, null_hash, true);
+        }
     }
 
     // Find the indexed address:
@@ -659,6 +730,8 @@ void watcher::do_query(const obelisk_query& query)
         {
             std::cout << "Send tx " << std::endl;
 
+            // Watch this transaction so we can update our outputs
+            watch_tx_mem(hash_transaction(query.tx));
             auto handler = [this](const std::error_code& ec)
             {
                 sent_tx(ec);
@@ -705,11 +778,11 @@ void watcher::loop()
             std::cout << "Skipping" << std::endl;
         if (query.type == obelisk_query::get_tx
                 || query.type == obelisk_query::get_tx_mem)
-            pool_sleep = 0;
+            poll_sleep = 0;
         else
-            pool_sleep = 5;
+            poll_sleep = 5;
 
-        sleep(pool_sleep); // LOL!
+        sleep(poll_sleep); // LOL!
     }
 }
 
