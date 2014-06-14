@@ -177,7 +177,7 @@ private:
                 const hash_digest parent_txid);
     void got_tx_mem(const std::error_code& ec, const transaction_type& tx,
                     hash_digest txid, hash_digest parent_txid);
-    void sent_tx(const std::error_code& ec);
+    void sent_tx(const std::error_code& ec, const transaction_type& tx);
 
     std::string utxo_to_id(output_point& pt);
 

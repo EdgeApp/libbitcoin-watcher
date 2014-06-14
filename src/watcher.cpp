@@ -540,7 +540,7 @@ void watcher::mark_outputs_pending(const transaction_type& tx, bool pending)
     }
 }
 
-void watcher::sent_tx(const std::error_code& ec)
+void watcher::sent_tx(const std::error_code& ec, const transaction_type& tx)
 {
     std::lock_guard<std::recursive_mutex> m(mutex_);
     request_done_ = true;
@@ -552,6 +552,12 @@ void watcher::sent_tx(const std::error_code& ec)
     }
     // TODO: Fire callback? Update database?
     // The history update process will handle this for now.
+
+    // Don't allow us to spend these outputs
+    mark_outputs_pending(tx, true);
+
+    // Watch this transaction so we can update our outputs
+    watch_tx_mem(hash_transaction(tx));
 
     std::cout << "Tx sent"  << std::endl;
 }
@@ -729,11 +735,9 @@ void watcher::do_query(const obelisk_query& query)
         {
             std::cout << "Send tx " << std::endl;
 
-            // Watch this transaction so we can update our outputs
-            watch_tx_mem(hash_transaction(query.tx));
-            auto handler = [this](const std::error_code& ec)
+            auto handler = [this, query](const std::error_code& ec)
             {
-                sent_tx(ec);
+                sent_tx(ec, query.tx);
             };
             fullnode.protocol.broadcast_transaction(query.tx, handler);
             break;
