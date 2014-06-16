@@ -372,7 +372,7 @@ void watcher::insert_tx(const transaction_type& tx, const hash_digest parent_txi
 
     if (cb_)
     {
-        if (has_all_prev_outputs(txid))
+        if (has_all_prev_outputs(txid) && parent_txid == null_hash)
         {
             std::cout << "Calling cb with tx" << std::endl;
             std::cout << pretty(tx) << std::endl;
