@@ -311,7 +311,7 @@ BC_API output_info_list watcher::get_utxos(const payment_address& address)
             continue;
 
         // Skip outputs which are pending
-        if (output_pending_[utxo_to_id(output.second.output)] == true)
+        if (output_pending_[utxo_to_id(output.second.output)])
             continue;
 
         if (null_hash == output.second.spend.hash)
@@ -480,7 +480,8 @@ void watcher::history_fetched(const std::error_code& ec,
         std::string id = utxo_to_id(output.output);
 
         // Update output database
-        output_pending_[id] = row.output_height == 0;
+        if (row.spend_height > 0)
+            output_pending_[id] = false;
         addresses_[address].outputs[id] = output;
     }
     addresses_[address].last_height = 0;
