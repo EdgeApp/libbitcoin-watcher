@@ -34,6 +34,7 @@ constexpr uint8_t id_tx_row = 0x20;
 constexpr uint8_t id_get_tx_row = 0x30;
 constexpr uint8_t id_pending_outputs = 0x40;
 constexpr uint8_t id_watch_txs = 0x50;
+constexpr uint8_t id_block_height = 0x60;
 
 BC_API watcher::~watcher()
 {
@@ -134,6 +135,9 @@ BC_API data_chunk watcher::serialize()
         serial.write_8_bytes(row.second);
     }
 
+    serial.write_byte(id_block_height);
+    serial.write_8_bytes(last_block_height_);
+
     // OMG HAX!
     std::string str = stream.str();
     auto data = reinterpret_cast<const uint8_t*>(str.data());
@@ -228,6 +232,12 @@ BC_API bool watcher::load(const data_chunk& data)
                     break;
                 }
 
+                case id_block_height:
+                {
+                    last_block_height_ = serial.read_8_bytes();
+                    break;
+                }
+
                 default:
                     return false;
             }
@@ -290,6 +300,15 @@ BC_API void watcher::set_callback(callback& cb)
 {
     std::lock_guard<std::recursive_mutex> m(mutex_);
     cb_ = cb;
+}
+
+/**
+ * Sets up the change in block heightcallback.
+ */
+BC_API void watcher::set_height_callback(block_height_callback& cb)
+{
+    std::lock_guard<std::recursive_mutex> m(mutex_);
+    height_cb_ = cb;
 }
 
 /**
@@ -437,7 +456,14 @@ void watcher::height_fetched(const std::error_code& ec, size_t height)
             << ec.message() << std::endl;
         return;
     }
+    size_t old_height = last_block_height_;
     last_block_height_ = height;
+
+    if (old_height != last_block_height_ && height_cb_)
+    {
+        std::cout << "Change in height. Calling last_block_height_" << std::endl;
+        height_cb_(last_block_height_);
+    }
 
     std::cout << "Last Height " << height << std::endl;
 }

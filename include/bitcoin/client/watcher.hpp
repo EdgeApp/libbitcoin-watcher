@@ -60,6 +60,9 @@ public:
     typedef std::function<void (const transaction_type&)> callback;
     BC_API void set_callback(callback& cb);
 
+    typedef std::function<void (const size_t)> block_height_callback;
+    BC_API void set_height_callback(block_height_callback& cb);
+
     BC_API output_info_list get_utxos(const payment_address& address);
     BC_API size_t get_last_block_height();
     BC_API size_t get_tx_height(hash_digest txid);
@@ -150,6 +153,8 @@ private:
 
     // Transaction callback:
     callback cb_;
+
+    block_height_callback height_cb_;
 
     // Server connection info:
     std::string server_;
