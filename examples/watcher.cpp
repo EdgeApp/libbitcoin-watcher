@@ -56,12 +56,16 @@ cli::cli()
 
 int cli::run()
 {
+    std::cout << "type \"help\" for instructions" << std::endl;
+
     while (!done_)
     {
+        // Read a line:
         std::cout << "> " << std::flush;
-
         char line[1000];
         std::cin.getline(line, sizeof(line));
+
+        // Extract the command:
         std::stringstream reader(line);
         std::string command;
         reader >> command;
@@ -265,6 +269,5 @@ bool cli::read_filename(std::stringstream& args, std::string& out)
 int main()
 {
     cli c;
-    std::cout << "type \"help\" for instructions" << std::endl;
     return c.run();
 }
