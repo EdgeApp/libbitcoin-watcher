@@ -22,9 +22,10 @@
 #include <iostream>
 #include <iterator>
 #include <sstream>
-#include <bitcoin/bitcoin.hpp>
 
 namespace libwallet {
+
+using std::placeholders::_1;
 
 // Serialization stuff:
 constexpr uint32_t serial_magic = 0x3eab61c3;
@@ -445,17 +446,59 @@ bool watcher::has_all_prev_outputs(const hash_digest& txid)
     return true;
 }
 
-void watcher::height_fetched(const std::error_code& ec, size_t height)
+/* == Callbacks =========================================================== */
+
+void watcher::height_fetch_error(const std::error_code& ec)
+{
+    std::lock_guard<std::recursive_mutex> m(mutex_);
+    request_done_ = true;
+    std::cerr << "balance: Failed to fetch last block height: " <<
+        ec.message() << std::endl;
+}
+
+void watcher::history_fetch_error(const std::error_code& ec)
+{
+    std::lock_guard<std::recursive_mutex> m(mutex_);
+    request_done_ = true;
+    std::cerr << "balance: Failed to fetch history: " <<
+        ec.message() << std::endl;
+}
+
+void watcher::get_tx_error(const std::error_code& ec)
+{
+    std::lock_guard<std::recursive_mutex> m(mutex_);
+    request_done_ = true;
+    std::cerr << "tx: Failed to fetch transaction: " <<
+        ec.message() << std::endl;
+}
+
+void watcher::get_tx_mem_error(const std::error_code& ec,
+    hash_digest txid, hash_digest parent_txid)
 {
     std::lock_guard<std::recursive_mutex> m(mutex_);
     request_done_ = true;
 
-    if (ec)
-    {
-        std::cerr << "balance: Failed to fetch last block height: "
-            << ec.message() << std::endl;
-        return;
-    }
+    // Try the blockchain instead:
+    if (ec == error::not_found)
+        enqueue_tx_query(txid, parent_txid, false);
+    else
+        std::cerr << "tx: Failed to fetch transaction: " <<
+            ec.message() << std::endl;
+}
+
+void watcher::send_tx_error(const std::error_code& ec)
+{
+    std::lock_guard<std::recursive_mutex> m(mutex_);
+    request_done_ = true;
+    std::cerr << "tx: Failed to send transaction" <<
+        ec.message() << std::endl;
+}
+
+void watcher::height_fetched(size_t height)
+{
+    std::lock_guard<std::recursive_mutex> m(mutex_);
+    request_done_ = true;
+
     size_t old_height = last_block_height_;
     last_block_height_ = height;
 
@@ -468,18 +511,12 @@ void watcher::height_fetched(const std::error_code& ec, size_t height)
     std::cout << "Last Height " << height << std::endl;
 }
 
-void watcher::history_fetched(const std::error_code& ec,
-    const payment_address& address, const blockchain::history_list& history)
+void watcher::history_fetched(const payment_address& address,
+    const blockchain::history_list& history)
 {
     std::lock_guard<std::recursive_mutex> m(mutex_);
     request_done_ = true;
 
-    if (ec)
-    {
-        std::cerr << "balance: Failed to fetch history: "
-            << ec.message() << std::endl;
-        return;
-    }
     std::vector<blockchain::history_row> history_sorted(history.begin(), history.end());
     std::sort(history_sorted.begin(), history_sorted.end(),
               [](const blockchain::history_row& a,
@@ -515,44 +552,13 @@ void watcher::history_fetched(const std::error_code& ec,
     std::cout << "Got address " << address.encoded() << std::endl;
 }
 
-void watcher::got_tx(const std::error_code& ec,
-                     const transaction_type& tx,
-                     hash_digest parent_txid)
+void watcher::got_tx(const transaction_type& tx,
+    const hash_digest& parent_txid)
 {
     std::lock_guard<std::recursive_mutex> m(mutex_);
     request_done_ = true;
 
-    if (ec)
-    {
-        std::cerr << "tx: Failed to fetch transaction: "
-            << ec.message() << std::endl;
-        return;
-    }
     mark_outputs_pending(tx, false);
-
-    // Update our state with the new info:
-    insert_tx(tx, parent_txid);
-}
-
-void watcher::got_tx_mem(const std::error_code& ec,
-    const transaction_type& tx, hash_digest txid, hash_digest parent_txid)
-{
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    request_done_ = true;
-
-    if (ec == error::not_found)
-    {
-        // Try the blockchain instead:
-        enqueue_tx_query(txid, parent_txid, false);
-        return;
-    }
-    else if (ec)
-    {
-        std::cerr << "tx: Failed to fetch transaction: "
-            << ec.message() << std::endl;
-        return;
-    }
-    mark_outputs_pending(tx, true);
 
     // Update our state with the new info:
     insert_tx(tx, parent_txid);
@@ -567,16 +573,11 @@ void watcher::mark_outputs_pending(const transaction_type& tx, bool pending)
     }
 }
 
-void watcher::sent_tx(const std::error_code& ec, const transaction_type& tx)
+void watcher::sent_tx(const transaction_type& tx)
 {
     std::lock_guard<std::recursive_mutex> m(mutex_);
     request_done_ = true;
 
-    if (ec)
-    {
-        std::cerr << "tx: Failed to send transaction" << std::endl;
-        return;
-    }
     // TODO: Fire callback? Update database?
     // The history update process will handle this for now.
 
@@ -701,9 +702,11 @@ void watcher::do_query(const obelisk_query& query)
         std::cout << "No server" << std::endl;
         return;
     }
-    threadpool pool(1);
-    obelisk::fullnode_interface fullnode(pool, server);
-    usleep(100000); // OMG WTF!
+
+    // Connect to the server:
+    zmq::context_t ctx;
+    libbitcoin::client::zmq_socket socket(ctx, server);
+    libbitcoin::client::obelisk_codec codec(socket);
 
     // Make the request:
     request_done_ = false;
@@ -713,60 +716,63 @@ void watcher::do_query(const obelisk_query& query)
         {
             std::cout << "Fetch block height " << std::endl;
 
-            auto handler = [this](const std::error_code& ec, size_t height)
+            auto eh = std::bind(&watcher::height_fetch_error, this, _1);
+            auto handler = [this](size_t height)
             {
-                height_fetched(ec, height);
+                height_fetched(height);
             };
-            fullnode.blockchain.fetch_last_height(handler);
+            codec.fetch_last_height(eh, handler);
             break;
         }
         case obelisk_query::address_history:
         {
             std::cout << "Get address " << query.address.encoded() << std::endl;
 
-            auto handler = [this, query](const std::error_code& ec,
+            auto eh = std::bind(&watcher::history_fetch_error, this, _1);
+            auto handler = [this, query](
                 const blockchain::history_list& history)
             {
-                history_fetched(ec, query.address, history);
+                history_fetched(query.address, history);
             };
-            fullnode.address.fetch_history(query.address,
-                handler, query.from_height);
+            codec.address_fetch_history(eh, handler,
+                query.address, query.from_height);
             break;
         }
         case obelisk_query::get_tx:
         {
             std::cout << "Get tx " << encode_hex(query.txid) << std::endl;
 
-            auto handler = [this, query](const std::error_code& ec,
-                const transaction_type& tx)
+            auto eh = std::bind(&watcher::get_tx_error, this, _1);
+            auto handler = [this, query](const transaction_type& tx)
             {
-                got_tx(ec, tx, query.parent_txid);
+                got_tx(tx, query.parent_txid);
             };
-            fullnode.blockchain.fetch_transaction(query.txid, handler);
+            codec.fetch_transaction(eh, handler, query.txid);
             break;
         }
         case obelisk_query::get_tx_mem:
         {
             std::cout << "Get tx mem " << encode_hex(query.txid) << std::endl;
 
-            auto txid = query.txid;
-            auto handler = [this, txid, query](const std::error_code& ec,
-                const transaction_type& tx)
+            auto eh = std::bind(&watcher::get_tx_mem_error, this, _1,
+                query.txid, query.parent_txid);
+            auto hander = [this, query](const transaction_type& tx)
             {
-                got_tx_mem(ec, tx, txid, query.parent_txid);
+                got_tx(tx, query.parent_txid);
             };
-            fullnode.transaction_pool.fetch_transaction(query.txid, handler);
+            codec.fetch_unconfirmed_transaction(eh, hander, query.txid);
             break;
         }
         case obelisk_query::send_tx:
         {
             std::cout << "Send tx " << std::endl;
 
-            auto handler = [this, query](const std::error_code& ec)
+            auto eh = std::bind(&watcher::send_tx_error, this, _1);
+            auto handler = [this, query]()
             {
-                sent_tx(ec, query.tx);
+                sent_tx(query.tx);
             };
-            fullnode.protocol.broadcast_transaction(query.tx, handler);
+            codec.broadcast_transaction(eh, handler, query.tx);
             break;
         }
         default:
@@ -775,15 +781,14 @@ void watcher::do_query(const obelisk_query& query)
 
     // Wait for results:
     int timeout = 0;
-    usleep(100000); // OMG WTF!
     while (!request_done_ && timeout < 100)
     {
-        fullnode.update();
-        usleep(100000); // OMG WTF!
+        zmq_pollitem_t pi = socket.pollitem();
+        zmq_poll(&pi, 1, 100);
+        if (pi.revents)
+            socket.forward(codec);
         timeout++;
     }
-    pool.stop();
-    pool.join();
     if (!request_done_)
     {
         std::cout << "Timed out" << std::endl;

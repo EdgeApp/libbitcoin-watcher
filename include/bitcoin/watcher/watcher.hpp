@@ -25,10 +25,7 @@
 #include <deque>
 #include <thread>
 #include <unordered_map>
-#include <obelisk/obelisk.hpp>
-
-#include <bitcoin/address.hpp>
-#include <bitcoin/define.hpp>
+#include <bitcoin/client.hpp>
 
 namespace libwallet {
 
@@ -175,14 +172,18 @@ private:
     void mark_outputs_pending(const transaction_type& tx, bool pending);
 
     // Callbacks (these grab the mutex):
-    void height_fetched(const std::error_code& ec, size_t height);
-    void history_fetched(const std::error_code& ec,
-        const payment_address& address, const blockchain::history_list& history);
-    void got_tx(const std::error_code& ec, const transaction_type& tx,
-                const hash_digest parent_txid);
-    void got_tx_mem(const std::error_code& ec, const transaction_type& tx,
-                    hash_digest txid, hash_digest parent_txid);
-    void sent_tx(const std::error_code& ec, const transaction_type& tx);
+    void height_fetch_error(const std::error_code& ec);
+    void history_fetch_error(const std::error_code& ec);
+    void get_tx_error(const std::error_code& ec);
+    void get_tx_mem_error(const std::error_code& ec,
+        hash_digest txid, hash_digest parent_txid);
+    void send_tx_error(const std::error_code& ec);
+
+    void height_fetched(size_t height);
+    void history_fetched(const payment_address& address,
+        const blockchain::history_list& history);
+    void got_tx(const transaction_type& tx, const hash_digest& parent_txid);
+    void sent_tx(const transaction_type& tx);
 
     std::string utxo_to_id(output_point& pt);
 
