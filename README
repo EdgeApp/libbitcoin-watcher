@@ -1,4 +1,5 @@
-libbitcoin-client
+libbitcoin-watcher
 =================
 
-What will eventually become the new obelisk client library
+Contains code for maintaining a local cache of interesting bitcoin
+transactions.

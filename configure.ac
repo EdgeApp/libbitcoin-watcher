@@ -1,4 +1,4 @@
-AC_INIT([libwallet], [1.0.10], [amir@unsystem.net])
+AC_INIT([libbitcoin-watcher], [1.0.10], [amir@unsystem.net])
 AC_USE_SYSTEM_EXTENSIONS
 AC_LANG(C++)
 AC_CONFIG_AUX_DIR([build-aux])
@@ -27,6 +27,6 @@ AC_ARG_WITH([pkgconfigdir], AS_HELP_STRING([--with-pkgconfigdir=PATH],
     [pkgconfigdir="$withval"], [pkgconfigdir='${libdir}/pkgconfig'])
 AC_SUBST([pkgconfigdir])
 
-AC_CONFIG_FILES([Makefile include/bitcoin/Makefile src/Makefile libbitcoin-client.pc])
+AC_CONFIG_FILES([Makefile include/bitcoin/Makefile src/Makefile libbitcoin-watcher.pc])
 AC_OUTPUT
 

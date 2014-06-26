@@ -1,5 +1,5 @@
-CXXFLAGS += $(shell pkg-config --cflags libbitcoin-client) -ggdb -std=c++11
-LIBS += $(shell pkg-config --libs libbitcoin-client)
+CXXFLAGS += $(shell pkg-config --cflags libbitcoin-watcher) -ggdb -std=c++11
+LIBS += $(shell pkg-config --libs libbitcoin-watcher)
 
 default: all
 

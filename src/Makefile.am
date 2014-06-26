@@ -1,10 +1,10 @@
 AUTOMAKE_OPTIONS = subdir-objects
 
-lib_LTLIBRARIES = libbitcoin-client.la
+lib_LTLIBRARIES = libbitcoin-watcher.la
 AM_CPPFLAGS = -I$(srcdir)/../include $(libbitcoin_CFLAGS)
-libbitcoin_client_la_SOURCES = \
+libbitcoin_watcher_la_SOURCES = \
     watcher.cpp \
     picker.cpp
 
-libbitcoin_client_la_LIBADD = $(libbitcoin_LIBS)
+libbitcoin_watcher_la_LIBADD = $(libbitcoin_LIBS)
 

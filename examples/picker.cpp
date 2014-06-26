@@ -4,7 +4,7 @@
 #include <sstream>
 
 #include <bitcoin/bitcoin.hpp>
-#include <bitcoin/client.hpp>
+#include <bitcoin/watcher.hpp>
 #include <wallet/wallet.hpp>
 
 using namespace libwallet;

@@ -1,9 +1,9 @@
 /*
- * Copyright (c) 2011-2014 libwallet developers (see AUTHORS)
+ * Copyright (c) 2011-2014 libbitcoin developers (see AUTHORS)
  *
- * This file is part of libbitcoin-client.
+ * This file is part of libbitcoin-watcher.
  *
- * libbitcoin-client is free software: you can redistribute it and/or modify
+ * libbitcoin-watcher is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
  * published by the Free Software Foundation, either version 3 of the
  * License, or (at your option) any later version.
@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-#include <bitcoin/client/watcher.hpp>
+#include <bitcoin/watcher/watcher.hpp>
 
 #include <unistd.h>
 #include <iostream>
