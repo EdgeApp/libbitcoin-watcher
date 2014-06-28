@@ -808,7 +808,14 @@ void watcher::loop()
 
         // Query the address:
         if (query.type != obelisk_query::none)
-            do_query(query);
+            try
+            {
+                do_query(query);
+            }
+            catch (zmq::error_t)
+            {
+                std::cout << "watcher: Network error" << std::endl;
+            }
         else
             std::cout << "Skipping" << std::endl;
 
