@@ -89,6 +89,7 @@ BC_API data_chunk watcher::serialize()
         serial.write_byte(address.version());
         serial.write_short_hash(address.hash());
         serial.write_8_bytes(row.second.last_height);
+        serial.write_byte(row.second.stale);
         // Output table:
         for (const auto& output: row.second.outputs)
         {
@@ -176,6 +177,7 @@ BC_API bool watcher::load(const data_chunk& data)
                     auto address = read_address(serial);
                     address_row row;
                     row.last_height = serial.read_8_bytes();
+                    row.stale = serial.read_byte();
                     addresses[address] = row;
                     break;
                 }
@@ -257,7 +259,7 @@ BC_API bool watcher::load(const data_chunk& data)
 BC_API void watcher::watch_address(const payment_address& address)
 {
     std::lock_guard<std::recursive_mutex> m(mutex_);
-    addresses_[address] = address_row{0, std::unordered_map<std::string, txo_type>()};
+    addresses_[address] = address_row{0, true, std::unordered_map<std::string, txo_type>()};
 }
 
 BC_API void watcher::watch_tx_mem(const hash_digest& txid)
@@ -364,9 +366,18 @@ BC_API size_t watcher::get_tx_height(hash_digest txid)
 BC_API watcher::watcher_status watcher::get_status()
 {
     std::lock_guard<std::recursive_mutex> m(mutex_);
+    // If our queues have anything in them, we are sync-ing
     if (send_tx_queue_.size() > 0 ||  get_tx_queue_.size() > 0)
     {
         return watcher_syncing;
+    }
+    // If we have any addresses marked as stale, we are sync-ing
+    for (auto &row : addresses_)
+    {
+        if (row.second.stale)
+        {
+            return watcher_syncing;
+        }
     }
     return watcher_sync_ok;
 }
@@ -558,6 +569,7 @@ void watcher::history_fetched(const payment_address& address,
         addresses_[address].outputs[id] = output;
     }
     addresses_[address].last_height = 0;
+    addresses_[address].stale = false;
 
     std::cout << "Got address " << address.encoded() << std::endl;
 }

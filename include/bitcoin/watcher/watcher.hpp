@@ -119,6 +119,7 @@ private:
      */
     struct address_row {
         size_t last_height;
+        bool stale; // have we fetched this address yet?
         std::unordered_map<std::string, txo_type> outputs;
     };
 
