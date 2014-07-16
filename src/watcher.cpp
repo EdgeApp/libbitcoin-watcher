@@ -259,7 +259,10 @@ BC_API bool watcher::load(const data_chunk& data)
 BC_API void watcher::watch_address(const payment_address& address)
 {
     std::lock_guard<std::recursive_mutex> m(mutex_);
-    addresses_[address] = address_row{0, true, std::unordered_map<std::string, txo_type>()};
+    if (addresses_.find(address) == addresses_.end())
+    {
+        addresses_[address] = address_row{0, true, std::unordered_map<std::string, txo_type>()};
+    }
 }
 
 BC_API void watcher::watch_tx_mem(const hash_digest& txid)
