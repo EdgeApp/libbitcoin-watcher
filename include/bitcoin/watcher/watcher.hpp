@@ -64,6 +64,14 @@ public:
     BC_API size_t get_last_block_height();
     BC_API size_t get_tx_height(hash_digest txid);
 
+    typedef enum {
+        watcher_sync_ok = 0,
+        watcher_syncing
+    } watcher_status;
+
+    BC_API watcher_status get_status();
+
+
     watcher(const watcher& copy) = delete;
     watcher& operator=(const watcher& copy) = delete;
 

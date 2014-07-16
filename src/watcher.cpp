@@ -361,6 +361,16 @@ BC_API size_t watcher::get_tx_height(hash_digest txid)
         return row->second.output_height;
 }
 
+BC_API watcher::watcher_status watcher::get_status()
+{
+    std::lock_guard<std::recursive_mutex> m(mutex_);
+    if (send_tx_queue_.size() > 0 ||  get_tx_queue_.size() > 0)
+    {
+        return watcher_syncing;
+    }
+    return watcher_sync_ok;
+}
+
 /**
  * Places a transaction in the queue if we don't already have it in the db.
  * Assumes the mutex is already being held.

@@ -22,6 +22,7 @@ private:
     void cmd_disconnect(std::stringstream& args);
     void cmd_watch(std::stringstream& args);
     void cmd_height();
+    void cmd_status();
     void cmd_tx_height(std::stringstream& args);
     void cmd_tx_watch(std::stringstream& args);
     void cmd_prioritize(std::stringstream& args);
@@ -76,6 +77,7 @@ int cli::run()
         else if (command == "disconnect")   cmd_disconnect(reader);
         else if (command == "watch")        cmd_watch(reader);
         else if (command == "height")       cmd_height();
+        else if (command == "status")       cmd_status();
         else if (command == "txheight")     cmd_tx_height(reader);
         else if (command == "txwatch")      cmd_tx_watch(reader);
         else if (command == "prioritize")   cmd_prioritize(reader);
@@ -130,6 +132,19 @@ void cli::cmd_disconnect(std::stringstream& args)
 void cli::cmd_height()
 {
     std::cout << watcher.get_last_block_height() << std::endl;
+}
+
+void cli::cmd_status()
+{
+    switch (watcher.get_status())
+    {
+        case libwallet::watcher::watcher_syncing:
+            std::cout << "Syncing" << std::endl;
+            break;
+        case libwallet::watcher::watcher_sync_ok:
+            std::cout << "OK" << std::endl;
+            break;
+    }
 }
 
 void cli::cmd_tx_height(std::stringstream& args)
