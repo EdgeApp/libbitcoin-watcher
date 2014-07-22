@@ -391,6 +391,18 @@ BC_API watcher::watcher_status watcher::get_status()
     return watcher_sync_ok;
 }
 
+BC_API int watcher::get_unconfirmed_count()
+{
+    std::lock_guard<std::recursive_mutex> m(mutex_);
+    int c = 0;
+    for (const auto& row: tx_table_)
+    {
+        if (row.second.output_height == 0)
+            c++;
+    }
+    return c;
+}
+
 /**
  * Places a transaction in the queue if we don't already have it in the db.
  * Assumes the mutex is already being held.
