@@ -62,7 +62,7 @@ public:
 
     BC_API output_info_list get_utxos(const payment_address& address);
     BC_API size_t get_last_block_height();
-    BC_API size_t get_tx_height(hash_digest txid);
+    BC_API bool get_tx_height(hash_digest txid, int& height);
 
     typedef enum {
         watcher_sync_ok = 0,

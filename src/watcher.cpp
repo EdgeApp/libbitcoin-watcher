@@ -356,14 +356,20 @@ BC_API size_t watcher::get_last_block_height()
     return last_block_height_;
 }
 
-BC_API size_t watcher::get_tx_height(hash_digest txid)
+BC_API bool watcher::get_tx_height(hash_digest txid, int& height)
 {
     std::lock_guard<std::recursive_mutex> m(mutex_);
     auto row = tx_table_.find(txid);
     if (row == tx_table_.end())
-        return 0;
+    {
+        height = 0;
+        return false;
+    }
     else
-        return row->second.output_height;
+    {
+        height = row->second.output_height;
+        return true;
+    }
 }
 
 BC_API watcher::watcher_status watcher::get_status()

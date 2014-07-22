@@ -152,7 +152,11 @@ void cli::cmd_tx_height(std::stringstream& args)
     bc::hash_digest txid = read_txid(args);
     if (txid == bc::null_hash)
         return;
-    std::cout << watcher.get_tx_height(txid) << std::endl;
+    int height;
+    if (watcher.get_tx_height(txid, height))
+        std::cout << height << std::endl;
+    else
+        std::cout << "Synchronizing..." << std::endl;
 }
 
 void cli::cmd_tx_watch(std::stringstream& args)
