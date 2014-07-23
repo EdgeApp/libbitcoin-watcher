@@ -700,6 +700,18 @@ watcher::obelisk_query watcher::next_query()
         out.type = obelisk_query::block_height;
         return out;
     }
+    // Fetch "Stale" addresses
+    for (const auto &row : addresses_)
+    {
+        if (row.second.stale)
+        {
+            out.type = obelisk_query::address_history;
+            out.address = row.first;
+            out.from_height = row.second.last_height;
+            return out;
+        }
+    }
+
     // Advance the counter:
     ++last_address_;
     if (addresses_.size() <= last_address_)
