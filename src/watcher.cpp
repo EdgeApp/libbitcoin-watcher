@@ -759,9 +759,14 @@ void watcher::do_query(const obelisk_query& query)
     }
 
     // Connect to the server:
-    zmq::context_t ctx;
-    libbitcoin::client::zmq_socket socket(ctx, server);
+    libbitcoin::client::zeromq_socket socket(ctx_);
     libbitcoin::client::obelisk_codec codec(socket);
+
+    if (!socket.connect(server))
+    {
+        std::cout << "watcher: Network error" << std::endl;
+        return;
+    }
 
     // Make the request:
     request_done_ = false;
@@ -863,14 +868,7 @@ void watcher::loop()
 
         // Query the address:
         if (query.type != obelisk_query::none)
-            try
-            {
-                do_query(query);
-            }
-            catch (zmq::error_t)
-            {
-                std::cout << "watcher: Network error" << std::endl;
-            }
+            do_query(query);
         else
             std::cout << "Skipping" << std::endl;
 

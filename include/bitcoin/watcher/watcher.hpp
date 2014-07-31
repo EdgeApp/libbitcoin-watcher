@@ -26,6 +26,7 @@
 #include <thread>
 #include <unordered_map>
 #include <bitcoin/client.hpp>
+#include <zmq.hpp>
 
 namespace libwallet {
 
@@ -76,6 +77,8 @@ public:
     watcher& operator=(const watcher& copy) = delete;
 
 private:
+    zmq::context_t ctx_;
+
     // Guards access to object state:
     std::recursive_mutex mutex_;
 
