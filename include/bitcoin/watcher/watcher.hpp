@@ -50,6 +50,7 @@ public:
     BC_API bool connect(const std::string& server);
 
     BC_API void send_tx(const transaction_type& tx);
+    BC_API void request_height();
 
     BC_API data_chunk serialize();
     BC_API bool load(const data_chunk& data);
@@ -93,7 +94,7 @@ private:
      */
     struct obelisk_query {
         enum {
-            none, address_history, get_tx, get_tx_mem, block_height
+            none, address_history, get_tx, get_tx_mem
         } type;
         // address_history:
         payment_address address;
@@ -108,7 +109,6 @@ private:
      * Last block height...duh
      */
     size_t last_block_height_;
-    bool check_height = true;
 
     /**
      * A transaction output putting funds into an address. If the spend

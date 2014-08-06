@@ -74,6 +74,19 @@ BC_API void watcher::send_tx(const transaction_type& tx)
     codec_.broadcast_transaction(eh, handler, tx);
 }
 
+BC_API void watcher::request_height()
+{
+    std::lock_guard<std::recursive_mutex> m(mutex_);
+    std::cout << "Fetch block height " << std::endl;
+
+    auto eh = std::bind(&watcher::height_fetch_error, this, _1);
+    auto handler = [this](size_t height)
+    {
+        height_fetched(height);
+    };
+    codec_.fetch_last_height(eh, handler);
+}
+
 /**
  * Serializes the database for storage while the app is off.
  */
@@ -692,12 +705,6 @@ watcher::obelisk_query watcher::next_query()
         return out;
     }
 
-    if (check_height)
-    {
-        check_height = false;
-        out.type = obelisk_query::block_height;
-        return out;
-    }
     // Fetch "Stale" addresses
     for (const auto &row : addresses_)
     {
@@ -715,7 +722,7 @@ watcher::obelisk_query watcher::next_query()
     if (addresses_.size() <= last_address_)
     {
         last_address_ = 0;
-        check_height = true;
+        request_height(); // <---!!!!! scary
         for (auto& txrow : watch_txs_)
         {
             txrow.second++;
@@ -745,18 +752,6 @@ bool watcher::do_query(const obelisk_query& query)
     request_done_ = false;
     switch (query.type)
     {
-        case obelisk_query::block_height:
-        {
-            std::cout << "Fetch block height " << std::endl;
-
-            auto eh = std::bind(&watcher::height_fetch_error, this, _1);
-            auto handler = [this](size_t height)
-            {
-                height_fetched(height);
-            };
-            codec_.fetch_last_height(eh, handler);
-            return true;
-        }
         case obelisk_query::address_history:
         {
             std::cout << "Get address " << query.address.encoded() << std::endl;
