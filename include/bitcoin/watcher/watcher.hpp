@@ -38,16 +38,31 @@ using namespace libbitcoin;
  * client library is broken, it opens a new obelisk connection every time.)
  */
 class watcher
+  : public libbitcoin::client::sleeper
 {
 public:
     BC_API ~watcher();
-    BC_API watcher();
+    BC_API watcher(void *ctx);
 
     /**
      * This must be called before doing anything else. If something goes
      * wrong, it returns false and the watcher will be non-functional.
      */
     BC_API bool connect(const std::string& server);
+
+    /**
+     * This is where all the work happens, including processing incoming
+     * messages and performing periodic queries. Call this method whenever
+     * the socket has incoming messages, or after the returned timeout has
+     * elapsed.
+     */
+    BC_API virtual std::chrono::milliseconds wakeup();
+
+    /**
+     * Returns a zeromq poll item that can be used to determine if the
+     * watcher needs its `wakeup` method called.
+     */
+    BC_API zmq_pollitem_t pollitem();
 
     BC_API void send_tx(const transaction_type& tx);
     BC_API void request_height();
@@ -82,7 +97,6 @@ public:
     watcher& operator=(const watcher& copy) = delete;
 
 private:
-    zmq::context_t ctx_;
     libbitcoin::client::zeromq_socket socket_;
     libbitcoin::client::obelisk_codec codec_;
 
@@ -136,18 +150,16 @@ private:
      */
     std::unordered_map<hash_digest, size_t> watch_txs_;
 
-    // Stuff waiting for the query thread:
+    // Periodic address checking:
     size_t last_address_;
     payment_address priority_address_;
     bool checked_priority_address_;
+    std::chrono::steady_clock::time_point last_check_;
 
     // Transaction callback:
     callback cb_;
 
     block_height_callback height_cb_;
-
-    // Server poll sleep
-    size_t poll_sleep = 5;
 
     // Obelisk query thread:
     std::atomic<bool> shutdown_;

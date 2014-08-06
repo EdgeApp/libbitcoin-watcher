@@ -35,8 +35,10 @@ private:
     bool read_address(std::stringstream& args, bc::payment_address& out);
     bool read_filename(std::stringstream& args, std::string& out);
 
-    libwallet::watcher watcher;
     bool done_;
+
+    zmq::context_t context_;
+    libwallet::watcher watcher;
 };
 
 cli::~cli()
@@ -44,7 +46,7 @@ cli::~cli()
 }
 
 cli::cli()
-  : done_(false)
+  : done_(false), watcher(context_)
 {
     libwallet::watcher::callback cb =
         [this](const libbitcoin::transaction_type& tx)

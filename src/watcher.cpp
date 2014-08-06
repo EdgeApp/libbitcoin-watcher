@@ -19,6 +19,7 @@
 #include <bitcoin/watcher/watcher.hpp>
 
 #include <unistd.h>
+#include <algorithm>
 #include <iostream>
 #include <iterator>
 #include <sstream>
@@ -43,9 +44,10 @@ BC_API watcher::~watcher()
     looper_.join();
 }
 
-BC_API watcher::watcher()
-  : socket_(ctx_), codec_(socket_),
+BC_API watcher::watcher(void *ctx)
+  : socket_(ctx), codec_(socket_),
     checked_priority_address_(false),
+    last_check_(std::chrono::steady_clock::now()),
     shutdown_(false), looper_([this](){loop();})
 {
 }
@@ -59,6 +61,34 @@ BC_API bool watcher::connect(const std::string& server)
         return false;
     }
     return true;
+}
+
+BC_API std::chrono::milliseconds watcher::wakeup()
+{
+    // Handle any pending network activity:
+    socket_.forward(codec_);
+
+    // Handle periodic checks:
+    const auto period = std::chrono::milliseconds(5000);
+    auto now = std::chrono::steady_clock::now();
+    auto delay = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now - last_check_);
+
+    if (period <= delay)
+    {
+        next_query();
+        last_check_ = now;
+        delay = std::chrono::milliseconds(0);
+    }
+    auto codec_delay = codec_.wakeup();
+    if (codec_delay.count())
+        return std::min(codec_.wakeup(), period - delay);
+    return period - delay;
+}
+
+BC_API zmq_pollitem_t watcher::pollitem()
+{
+    return socket_.pollitem();
 }
 
 BC_API void watcher::send_tx(const transaction_type& tx)

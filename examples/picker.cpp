@@ -73,7 +73,8 @@ int main(int argc, const char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    watcher watcher;
+    zmq::context_t context;
+    watcher watcher(context);
     watcher.watch_address(myaddr.encoded());
     watcher.connect("tcp://obelisk.unsystem.net:9091");
     sleep(100);
