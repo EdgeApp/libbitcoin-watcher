@@ -90,18 +90,6 @@ private:
     std::recursive_mutex mutex_;
 
     /**
-     * A pending query to the obelisk server.
-     */
-    struct obelisk_query {
-        enum {
-            none, address_history
-        } type;
-        // address_history:
-        payment_address address;
-        size_t from_height;
-    };
-
-    /**
      * Last block height...duh
      */
     size_t last_block_height_;
@@ -163,10 +151,10 @@ private:
 
     // Obelisk query thread:
     std::atomic<bool> shutdown_;
-    std::atomic<bool> request_done_;
     std::thread looper_;
 
     // Database update (the mutex must be held before calling):
+    void get_history(payment_address address, size_t from_height);
     void enqueue_tx_query(hash_digest txid, hash_digest parent_txid, bool mempool=true);
     void insert_tx(const transaction_type& tx, const hash_digest parent_txid);
     void enque_all_inputs(const transaction_type& tx);
@@ -190,8 +178,7 @@ private:
     std::string utxo_to_id(output_point& pt);
 
     // Query thread stuff:
-    obelisk_query next_query();
-    bool do_query(const obelisk_query& query);
+    bool next_query();
     void loop();
 };
 
