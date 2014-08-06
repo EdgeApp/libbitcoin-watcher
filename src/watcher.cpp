@@ -833,10 +833,17 @@ void watcher::loop()
             int timeout = 0;
             while (!request_done_ && timeout < 100)
             {
-                zmq_pollitem_t pi = socket_.pollitem();
+                zmq_pollitem_t pi;
+                {
+                    std::lock_guard<std::recursive_mutex> m(mutex_);
+                    pi = socket_.pollitem();
+                }
                 zmq_poll(&pi, 1, 100);
                 if (pi.revents)
+                {
+                    std::lock_guard<std::recursive_mutex> m(mutex_);
                     socket_.forward(codec_);
+                }
                 timeout++;
             }
             if (!request_done_)
