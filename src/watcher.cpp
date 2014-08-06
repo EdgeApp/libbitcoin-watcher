@@ -135,13 +135,6 @@ BC_API data_chunk watcher::serialize()
         serial.write_byte(row.second.relevant);
     }
 
-    // Pending tx list:
-    for (auto row: get_tx_queue_)
-    {
-        serial.write_byte(id_get_tx_row);
-        serial.write_hash(row.txid);
-    }
-
     // Output status
     for (auto row: output_pending_)
     {
@@ -180,7 +173,6 @@ BC_API bool watcher::load(const data_chunk& data)
     auto serial = make_deserializer(data.begin(), data.end());
     std::unordered_map<payment_address, address_row> addresses;
     std::unordered_map<hash_digest, tx_row> tx_table;
-    std::deque<pending_get_tx> get_tx_queue;
 
     try
     {
@@ -233,9 +225,7 @@ BC_API bool watcher::load(const data_chunk& data)
 
                 case id_get_tx_row:
                 {
-                    pending_get_tx row;
-                    row.txid = serial.read_hash();
-                    row.mempool = false;
+                    serial.read_hash();
                     break;
                 }
 
@@ -272,7 +262,6 @@ BC_API bool watcher::load(const data_chunk& data)
     }
     addresses_ = addresses;
     tx_table_ = tx_table;
-    get_tx_queue_ = get_tx_queue;
     return true;
 }
 
@@ -395,11 +384,6 @@ BC_API bool watcher::get_tx_height(hash_digest txid, int& height)
 BC_API watcher::watcher_status watcher::get_status()
 {
     std::lock_guard<std::recursive_mutex> m(mutex_);
-    // If our queues have anything in them, we are sync-ing
-    if (get_tx_queue_.size() > 0)
-    {
-        return watcher_syncing;
-    }
     // If we have any addresses marked as stale, we are sync-ing
     for (auto &row : addresses_)
     {
@@ -425,18 +409,38 @@ BC_API int watcher::get_unconfirmed_count()
 
 /**
  * Places a transaction in the queue if we don't already have it in the db.
- * Assumes the mutex is already being held.
  */
 void watcher::enqueue_tx_query(hash_digest txid, hash_digest parent_txid, bool mempool)
 {
+    std::lock_guard<std::recursive_mutex> m(mutex_);
+
     // Only queue txs we don't have
     if (tx_table_.find(txid) != tx_table_.end())
         return;
 
     if (mempool)
-        get_tx_queue_.push_back(pending_get_tx{txid, parent_txid, mempool});
+    {
+        std::cout << "Get tx mem " << encode_hex(txid) << std::endl;
+
+        auto eh = std::bind(&watcher::get_tx_mem_error, this, _1,
+            txid, parent_txid);
+        auto hander = [this, parent_txid](const transaction_type& tx)
+        {
+            got_tx(tx, parent_txid);
+        };
+        codec_.fetch_unconfirmed_transaction(eh, hander, txid);
+    }
     else
-        get_tx_queue_.push_front(pending_get_tx{txid, parent_txid, mempool});
+    {
+        std::cout << "Get tx " << encode_hex(txid) << std::endl;
+
+        auto eh = std::bind(&watcher::get_tx_error, this, _1);
+        auto handler = [this, parent_txid](const transaction_type& tx)
+        {
+            got_tx(tx, parent_txid);
+        };
+        codec_.fetch_transaction(eh, handler, txid);
+    }
 }
 
 /**
@@ -669,20 +673,6 @@ watcher::obelisk_query watcher::next_query()
     std::lock_guard<std::recursive_mutex> m(mutex_);
     obelisk_query out;
 
-    // Process pending tx queries, if any:
-    if (!get_tx_queue_.empty())
-    {
-        auto pending = get_tx_queue_.front();
-        get_tx_queue_.pop_front();
-
-        out.type = obelisk_query::get_tx;
-        if (pending.mempool)
-            out.type = obelisk_query::get_tx_mem;
-        out.txid = pending.txid;
-        out.parent_txid = pending.parent_txid;
-        return out;
-    }
-
     // Handle the high-priority address, if we have one:
     if (!checked_priority_address_)
     {
@@ -766,31 +756,6 @@ bool watcher::do_query(const obelisk_query& query)
                 query.address, query.from_height);
             return true;
         }
-        case obelisk_query::get_tx:
-        {
-            std::cout << "Get tx " << encode_hex(query.txid) << std::endl;
-
-            auto eh = std::bind(&watcher::get_tx_error, this, _1);
-            auto handler = [this, query](const transaction_type& tx)
-            {
-                got_tx(tx, query.parent_txid);
-            };
-            codec_.fetch_transaction(eh, handler, query.txid);
-            return true;
-        }
-        case obelisk_query::get_tx_mem:
-        {
-            std::cout << "Get tx mem " << encode_hex(query.txid) << std::endl;
-
-            auto eh = std::bind(&watcher::get_tx_mem_error, this, _1,
-                query.txid, query.parent_txid);
-            auto hander = [this, query](const transaction_type& tx)
-            {
-                got_tx(tx, query.parent_txid);
-            };
-            codec_.fetch_unconfirmed_transaction(eh, hander, query.txid);
-            return true;
-        }
         default:
             return false;
     }
@@ -835,12 +800,7 @@ void watcher::loop()
         else
             std::cout << "Skipping" << std::endl;
 
-        if (!get_tx_queue_.empty())
-            poll_sleep = 0;
-        else
-            poll_sleep = 5;
-
-        sleep(poll_sleep); // LOL!
+        sleep(5); // LOL!
     }
 }
 
