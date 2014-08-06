@@ -43,8 +43,12 @@ public:
     BC_API ~watcher();
     BC_API watcher();
 
-    BC_API void disconnect();
-    BC_API void connect(const std::string& server);
+    /**
+     * This must be called before doing anything else. If something goes
+     * wrong, it returns false and the watcher will be non-functional.
+     */
+    BC_API bool connect(const std::string& server);
+
     BC_API void send_tx(const transaction_type& tx);
 
     BC_API data_chunk serialize();
@@ -78,6 +82,8 @@ public:
 
 private:
     zmq::context_t ctx_;
+    libbitcoin::client::zeromq_socket socket_;
+    libbitcoin::client::obelisk_codec codec_;
 
     // Guards access to object state:
     std::recursive_mutex mutex_;
@@ -165,9 +171,6 @@ private:
 
     block_height_callback height_cb_;
 
-    // Server connection info:
-    std::string server_;
-
     // Server poll sleep
     size_t poll_sleep = 5;
 
@@ -201,8 +204,7 @@ private:
 
     // Query thread stuff:
     obelisk_query next_query();
-    std::string get_server();
-    void do_query(const obelisk_query& query);
+    bool do_query(const obelisk_query& query);
     void loop();
 };
 

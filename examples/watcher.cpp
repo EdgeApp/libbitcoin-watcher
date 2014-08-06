@@ -19,7 +19,6 @@ private:
     void cmd_exit();
     void cmd_help();
     void cmd_connect(std::stringstream& args);
-    void cmd_disconnect(std::stringstream& args);
     void cmd_watch(std::stringstream& args);
     void cmd_height();
     void cmd_status();
@@ -74,7 +73,6 @@ int cli::run()
         if (command == "exit")              cmd_exit();
         else if (command == "help")         cmd_help();
         else if (command == "connect")      cmd_connect(reader);
-        else if (command == "disconnect")   cmd_disconnect(reader);
         else if (command == "watch")        cmd_watch(reader);
         else if (command == "height")       cmd_height();
         else if (command == "status")       cmd_status();
@@ -102,7 +100,6 @@ void cli::cmd_help()
     std::cout << "  exit              - leave the program" << std::endl;
     std::cout << "  help              - this menu" << std::endl;
     std::cout << "  connect <server>  - connect to obelisk server" << std::endl;
-    std::cout << "  disconnect        - stop talking to the obelisk server" << std::endl;
     std::cout << "  watch <address>   - watch an address" << std::endl;
     std::cout << "  prioritize [<address>] - check an address more frequently" << std::endl;
     std::cout << "  utxos <address>   - get utxos for an address" << std::endl;
@@ -122,11 +119,6 @@ void cli::cmd_connect(std::stringstream& args)
     std::cout << "connecting to " << arg << std::endl;
 
     watcher.connect(arg);
-}
-
-void cli::cmd_disconnect(std::stringstream& args)
-{
-    watcher.disconnect();
 }
 
 void cli::cmd_height()

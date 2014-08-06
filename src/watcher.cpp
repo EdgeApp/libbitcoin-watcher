@@ -44,21 +44,21 @@ BC_API watcher::~watcher()
 }
 
 BC_API watcher::watcher()
-  : checked_priority_address_(false),
+  : socket_(ctx_), codec_(socket_),
+    checked_priority_address_(false),
     shutdown_(false), request_done_(false), looper_([this](){loop();})
 {
 }
 
-BC_API void watcher::disconnect()
+BC_API bool watcher::connect(const std::string& server)
 {
     std::lock_guard<std::recursive_mutex> m(mutex_);
-    server_ = "";
-}
-
-BC_API void watcher::connect(const std::string& server)
-{
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    server_ = server;
+    if (!socket_.connect(server))
+    {
+        std::cout << "watcher: Network error" << std::endl;
+        return false;
+    }
+    return true;
 }
 
 BC_API void watcher::send_tx(const transaction_type& tx)
@@ -736,37 +736,12 @@ watcher::obelisk_query watcher::next_query()
 }
 
 /**
- * Obtains the server string for the watcher thread, using a mutex lock.
- */
-std::string watcher::get_server()
-{
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    return server_;
-}
-
-/**
  * Connects to an obelisk server and makes a request. This happens outside
  * the mutex lock.
  */
-void watcher::do_query(const obelisk_query& query)
+bool watcher::do_query(const obelisk_query& query)
 {
-    // Connect to the sever:
-    std::string server = get_server();
-    if ("" == server)
-    {
-        std::cout << "No server" << std::endl;
-        return;
-    }
-
-    // Connect to the server:
-    libbitcoin::client::zeromq_socket socket(ctx_);
-    libbitcoin::client::obelisk_codec codec(socket);
-
-    if (!socket.connect(server))
-    {
-        std::cout << "watcher: Network error" << std::endl;
-        return;
-    }
+    std::lock_guard<std::recursive_mutex> m(mutex_);
 
     // Make the request:
     request_done_ = false;
@@ -781,8 +756,8 @@ void watcher::do_query(const obelisk_query& query)
             {
                 height_fetched(height);
             };
-            codec.fetch_last_height(eh, handler);
-            break;
+            codec_.fetch_last_height(eh, handler);
+            return true;
         }
         case obelisk_query::address_history:
         {
@@ -794,9 +769,9 @@ void watcher::do_query(const obelisk_query& query)
             {
                 history_fetched(query.address, history);
             };
-            codec.address_fetch_history(eh, handler,
+            codec_.address_fetch_history(eh, handler,
                 query.address, query.from_height);
-            break;
+            return true;
         }
         case obelisk_query::get_tx:
         {
@@ -807,8 +782,8 @@ void watcher::do_query(const obelisk_query& query)
             {
                 got_tx(tx, query.parent_txid);
             };
-            codec.fetch_transaction(eh, handler, query.txid);
-            break;
+            codec_.fetch_transaction(eh, handler, query.txid);
+            return true;
         }
         case obelisk_query::get_tx_mem:
         {
@@ -820,8 +795,8 @@ void watcher::do_query(const obelisk_query& query)
             {
                 got_tx(tx, query.parent_txid);
             };
-            codec.fetch_unconfirmed_transaction(eh, hander, query.txid);
-            break;
+            codec_.fetch_unconfirmed_transaction(eh, hander, query.txid);
+            return true;
         }
         case obelisk_query::send_tx:
         {
@@ -832,26 +807,11 @@ void watcher::do_query(const obelisk_query& query)
             {
                 sent_tx(query.tx);
             };
-            codec.broadcast_transaction(eh, handler, query.tx);
-            break;
+            codec_.broadcast_transaction(eh, handler, query.tx);
+            return true;
         }
         default:
-            break;
-    }
-
-    // Wait for results:
-    int timeout = 0;
-    while (!request_done_ && timeout < 100)
-    {
-        zmq_pollitem_t pi = socket.pollitem();
-        zmq_poll(&pi, 1, 100);
-        if (pi.revents)
-            socket.forward(codec);
-        timeout++;
-    }
-    if (!request_done_)
-    {
-        std::cout << "Timed out" << std::endl;
+            return false;
     }
 }
 
@@ -867,8 +827,23 @@ void watcher::loop()
         auto query = next_query();
 
         // Query the address:
-        if (query.type != obelisk_query::none)
-            do_query(query);
+        if (do_query(query))
+        {
+            // Wait for results:
+            int timeout = 0;
+            while (!request_done_ && timeout < 100)
+            {
+                zmq_pollitem_t pi = socket_.pollitem();
+                zmq_poll(&pi, 1, 100);
+                if (pi.revents)
+                    socket_.forward(codec_);
+                timeout++;
+            }
+            if (!request_done_)
+            {
+                std::cout << "Timed out" << std::endl;
+            }
+        }
         else
             std::cout << "Skipping" << std::endl;
 

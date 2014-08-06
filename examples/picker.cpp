@@ -118,7 +118,6 @@ int main(int argc, const char *argv[])
     {
         std::cout << "FAILED to create unsigned tx!" << std::endl;
     }
-    watcher.disconnect();
     return 0;
 }
 
