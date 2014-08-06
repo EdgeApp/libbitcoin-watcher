@@ -64,7 +64,14 @@ BC_API bool watcher::connect(const std::string& server)
 BC_API void watcher::send_tx(const transaction_type& tx)
 {
     std::lock_guard<std::recursive_mutex> m(mutex_);
-    send_tx_queue_.push_back(tx);
+    std::cout << "watcher: Send tx" << std::endl;
+
+    auto eh = std::bind(&watcher::send_tx_error, this, _1);
+    auto handler = [this, tx]()
+    {
+        sent_tx(tx);
+    };
+    codec_.broadcast_transaction(eh, handler, tx);
 }
 
 /**
@@ -376,7 +383,7 @@ BC_API watcher::watcher_status watcher::get_status()
 {
     std::lock_guard<std::recursive_mutex> m(mutex_);
     // If our queues have anything in them, we are sync-ing
-    if (send_tx_queue_.size() > 0 ||  get_tx_queue_.size() > 0)
+    if (get_tx_queue_.size() > 0)
     {
         return watcher_syncing;
     }
@@ -649,15 +656,6 @@ watcher::obelisk_query watcher::next_query()
     std::lock_guard<std::recursive_mutex> m(mutex_);
     obelisk_query out;
 
-    // Process pending sends, if any:
-    if (!send_tx_queue_.empty())
-    {
-        out.type = obelisk_query::send_tx;
-        out.tx = send_tx_queue_.front();
-        send_tx_queue_.pop_front();
-        return out;
-    }
-
     // Process pending tx queries, if any:
     if (!get_tx_queue_.empty())
     {
@@ -796,18 +794,6 @@ bool watcher::do_query(const obelisk_query& query)
                 got_tx(tx, query.parent_txid);
             };
             codec_.fetch_unconfirmed_transaction(eh, hander, query.txid);
-            return true;
-        }
-        case obelisk_query::send_tx:
-        {
-            std::cout << "Send tx " << std::endl;
-
-            auto eh = std::bind(&watcher::send_tx_error, this, _1);
-            auto handler = [this, query]()
-            {
-                sent_tx(query.tx);
-            };
-            codec_.broadcast_transaction(eh, handler, query.tx);
             return true;
         }
         default:

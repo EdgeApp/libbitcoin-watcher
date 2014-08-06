@@ -93,7 +93,7 @@ private:
      */
     struct obelisk_query {
         enum {
-            none, address_history, get_tx, get_tx_mem, send_tx, block_height
+            none, address_history, get_tx, get_tx_mem, block_height
         } type;
         // address_history:
         payment_address address;
@@ -102,8 +102,6 @@ private:
         hash_digest txid;
         // use for fetching prev outputs
         hash_digest parent_txid;
-        // send_tx:
-        transaction_type tx;
     };
 
     /**
@@ -162,7 +160,6 @@ private:
         bool mempool;
     };
     std::deque<pending_get_tx> get_tx_queue_;
-    std::deque<transaction_type> send_tx_queue_;
     payment_address priority_address_;
     bool checked_priority_address_;
 
