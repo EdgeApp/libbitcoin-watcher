@@ -1,7 +1,8 @@
 #include <iostream>
-#include <string>
 #include <sstream>
+#include <string>
 #include <fstream>
+#include "read_line.hpp"
 #include <bitcoin/watcher/watcher.hpp>
 
 /**
@@ -16,6 +17,7 @@ public:
     int run();
 
 private:
+    void command();
     void cmd_exit();
     void cmd_help();
     void cmd_connect(std::stringstream& args);
@@ -38,6 +40,7 @@ private:
     bool done_;
 
     zmq::context_t context_;
+    read_line terminal_;
     libwallet::watcher watcher;
 };
 
@@ -46,7 +49,7 @@ cli::~cli()
 }
 
 cli::cli()
-  : done_(false), watcher(context_)
+  : done_(false), terminal_(context_), watcher(context_)
 {
     libwallet::watcher::callback cb =
         [this](const libbitcoin::transaction_type& tx)
@@ -56,21 +59,43 @@ cli::cli()
     watcher.set_callback(cb);
 }
 
+/**
+ * The main loop for the example application. This loop can be woken up
+ * by either events from the network or by input from the terminal.
+ */
 int cli::run()
 {
     std::cout << "type \"help\" for instructions" << std::endl;
+    terminal_.show_prompt();
 
     while (!done_)
     {
-        // Read a line:
-        std::cout << "> " << std::flush;
-        char line[1000];
-        std::cin.getline(line, sizeof(line));
+        int delay = -1;
+        std::vector<zmq_pollitem_t> items;
+        items.reserve(2);
+        items.push_back(terminal_.pollitem());
+        items.push_back(watcher.pollitem());
+        auto next_wakeup = watcher.wakeup();
+        if (next_wakeup.count())
+            delay = next_wakeup.count();
+        zmq::poll(items.data(), items.size(), delay);
 
-        // Extract the command:
-        std::stringstream reader(line);
-        std::string command;
-        reader >> command;
+        if (items[0].revents)
+            command();
+        if (items[1].revents)
+            ; // We handle these in the watcher wakeup call
+    }
+    return 0;
+}
+
+/**
+ * Reads a command from the terminal thread, and processes it appropriately.
+ */
+void cli::command()
+{
+    std::stringstream reader(terminal_.get_line());
+    std::string command;
+    reader >> command;
 
         if (command == "exit")              cmd_exit();
         else if (command == "help")         cmd_help();
@@ -86,13 +111,14 @@ int cli::run()
         else if (command == "load")         cmd_load(reader);
         else
             std::cout << "unknown command " << command << std::endl;
-    }
-    return 0;
+
+    // Display another prompt, if needed:
+    if (!done_)
+        terminal_.show_prompt();
 }
 
 void cli::cmd_exit()
 {
-    std::cout << "waiting for thread to stop..." << std::endl;
     done_ = true;
 }
 

@@ -40,21 +40,17 @@ constexpr uint8_t id_block_height = 0x60;
 
 BC_API watcher::~watcher()
 {
-    shutdown_ = true;
-    looper_.join();
 }
 
 BC_API watcher::watcher(void *ctx)
   : socket_(ctx), codec_(socket_),
     checked_priority_address_(false),
-    last_check_(std::chrono::steady_clock::now()),
-    shutdown_(false), looper_([this](){loop();})
+    last_check_(std::chrono::steady_clock::now())
 {
 }
 
 BC_API bool watcher::connect(const std::string& server)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     if (!socket_.connect(server))
     {
         std::cout << "watcher: Network error" << std::endl;
@@ -93,7 +89,6 @@ BC_API zmq_pollitem_t watcher::pollitem()
 
 BC_API void watcher::send_tx(const transaction_type& tx)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     std::cout << "watcher: Send tx" << std::endl;
 
     auto eh = std::bind(&watcher::send_tx_error, this, _1);
@@ -106,7 +101,6 @@ BC_API void watcher::send_tx(const transaction_type& tx)
 
 BC_API void watcher::request_height()
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     std::cout << "Fetch block height " << std::endl;
 
     auto eh = std::bind(&watcher::height_fetch_error, this, _1);
@@ -122,8 +116,6 @@ BC_API void watcher::request_height()
  */
 BC_API data_chunk watcher::serialize()
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-
     std::ostringstream stream;
     auto serial = make_serializer(std::ostreambuf_iterator<char>(stream));
 
@@ -297,7 +289,6 @@ BC_API bool watcher::load(const data_chunk& data)
 
 BC_API void watcher::watch_address(const payment_address& address)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     if (addresses_.find(address) == addresses_.end())
     {
         addresses_[address] = address_row{0, true, std::unordered_map<std::string, txo_type>()};
@@ -306,7 +297,6 @@ BC_API void watcher::watch_address(const payment_address& address)
 
 BC_API void watcher::watch_tx_mem(const hash_digest& txid)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     auto row = watch_txs_.find(txid);
     if (row == watch_txs_.end())
     {
@@ -322,14 +312,12 @@ BC_API void watcher::watch_tx_mem(const hash_digest& txid)
  */
 BC_API void watcher::prioritize_address(const payment_address& address)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     priority_address_ = address;
 }
 
 
 BC_API transaction_type watcher::find_tx(hash_digest txid)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     auto tx = tx_table_.find(txid);
     if (tx != tx_table_.end())
         return tx->second.tx;
@@ -343,7 +331,6 @@ BC_API transaction_type watcher::find_tx(hash_digest txid)
  */
 BC_API void watcher::set_callback(callback& cb)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     cb_ = cb;
 }
 
@@ -352,7 +339,6 @@ BC_API void watcher::set_callback(callback& cb)
  */
 BC_API void watcher::set_height_callback(block_height_callback& cb)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     height_cb_ = cb;
 }
 
@@ -362,7 +348,6 @@ BC_API void watcher::set_height_callback(block_height_callback& cb)
  */
 BC_API output_info_list watcher::get_utxos(const payment_address& address)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     output_info_list out;
 
     auto row = addresses_.find(address);
@@ -391,13 +376,11 @@ BC_API output_info_list watcher::get_utxos(const payment_address& address)
 
 BC_API size_t watcher::get_last_block_height()
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     return last_block_height_;
 }
 
 BC_API bool watcher::get_tx_height(hash_digest txid, int& height)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     auto row = tx_table_.find(txid);
     if (row == tx_table_.end())
     {
@@ -413,7 +396,6 @@ BC_API bool watcher::get_tx_height(hash_digest txid, int& height)
 
 BC_API watcher::watcher_status watcher::get_status()
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     // If we have any addresses marked as stale, we are sync-ing
     for (auto &row : addresses_)
     {
@@ -427,7 +409,6 @@ BC_API watcher::watcher_status watcher::get_status()
 
 BC_API int watcher::get_unconfirmed_count()
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     int c = 0;
     for (const auto& row: tx_table_)
     {
@@ -442,7 +423,6 @@ BC_API int watcher::get_unconfirmed_count()
  */
 void watcher::get_history(payment_address address, size_t from_height)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     std::cout << "Get address " << address.encoded() << std::endl;
 
     auto eh = std::bind(&watcher::history_fetch_error, this, _1);
@@ -460,8 +440,6 @@ void watcher::get_history(payment_address address, size_t from_height)
  */
 void watcher::enqueue_tx_query(hash_digest txid, hash_digest parent_txid, bool mempool)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-
     // Only queue txs we don't have
     if (tx_table_.find(txid) != tx_table_.end())
         return;
@@ -564,21 +542,18 @@ bool watcher::has_all_prev_outputs(const hash_digest& txid)
 
 void watcher::height_fetch_error(const std::error_code& ec)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     std::cerr << "balance: Failed to fetch last block height: " <<
         ec.message() << std::endl;
 }
 
 void watcher::history_fetch_error(const std::error_code& ec)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     std::cerr << "balance: Failed to fetch history: " <<
         ec.message() << std::endl;
 }
 
 void watcher::get_tx_error(const std::error_code& ec)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     std::cerr << "tx: Failed to fetch transaction: " <<
         ec.message() << std::endl;
 }
@@ -586,8 +561,6 @@ void watcher::get_tx_error(const std::error_code& ec)
 void watcher::get_tx_mem_error(const std::error_code& ec,
     hash_digest txid, hash_digest parent_txid)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-
     // Try the blockchain instead:
     if (ec == error::not_found)
         enqueue_tx_query(txid, parent_txid, false);
@@ -598,15 +571,12 @@ void watcher::get_tx_mem_error(const std::error_code& ec,
 
 void watcher::send_tx_error(const std::error_code& ec)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
     std::cerr << "tx: Failed to send transaction" <<
         ec.message() << std::endl;
 }
 
 void watcher::height_fetched(size_t height)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-
     size_t old_height = last_block_height_;
     last_block_height_ = height;
 
@@ -622,8 +592,6 @@ void watcher::height_fetched(size_t height)
 void watcher::history_fetched(const payment_address& address,
     const blockchain::history_list& history)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-
     std::vector<blockchain::history_row> history_sorted(history.begin(), history.end());
     std::sort(history_sorted.begin(), history_sorted.end(),
               [](const blockchain::history_row& a,
@@ -663,8 +631,6 @@ void watcher::history_fetched(const payment_address& address,
 void watcher::got_tx(const transaction_type& tx,
     const hash_digest& parent_txid)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-
     mark_outputs_pending(tx, false);
 
     // Update our state with the new info:
@@ -682,8 +648,6 @@ void watcher::mark_outputs_pending(const transaction_type& tx, bool pending)
 
 void watcher::sent_tx(const transaction_type& tx)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-
     // TODO: Fire callback? Update database?
     // The history update process will handle this for now.
 
@@ -704,13 +668,10 @@ std::string watcher::utxo_to_id(output_point& pt)
 }
 
 /**
- * Figures out the next thing for the query thread to work on. This happens
- * under a mutex lock.
+ * Called periodically to check for incoming funds.
  */
 bool watcher::next_query()
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-
     // Handle the high-priority address, if we have one:
     if (!checked_priority_address_)
     {
@@ -757,33 +718,6 @@ bool watcher::next_query()
         ++it;
     get_history(it->first, it->second.last_height);
     return true;
-}
-
-/**
- * The main watcher loop. Sleeps for some amount of time, then wakes up
- * and checks an address (assuming we have server connection information).
- */
-void watcher::loop()
-{
-    while (!shutdown_)
-    {
-        // Do any periodic queries:
-        next_query();
-
-        zmq_pollitem_t pi;
-        {
-            std::lock_guard<std::recursive_mutex> m(mutex_);
-            pi = socket_.pollitem();
-        }
-        zmq_poll(&pi, 1, 1000);
-        if (pi.revents)
-        {
-            std::lock_guard<std::recursive_mutex> m(mutex_);
-            socket_.forward(codec_);
-        }
-
-        sleep(5); // LOL!
-    }
 }
 
 } // libwallet

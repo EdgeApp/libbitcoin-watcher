@@ -6,11 +6,11 @@ default: all
 .cpp.o:
 	$(CXX) -o $@ -c $< $(CXXFLAGS)
 
-watcher: watcher.o
-	$(CXX) $(LDFLAGS) -o $@ $< $(LIBS)
+watcher: watcher.o read_line.o
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 picker: picker.o
-	$(CXX) $(LDFLAGS) -o $@ $< $(LIBS)
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 all: picker watcher
 

@@ -21,9 +21,7 @@
 
 #include <atomic>
 #include <functional>
-#include <mutex>
 #include <deque>
-#include <thread>
 #include <unordered_map>
 #include <bitcoin/client.hpp>
 #include <zmq.hpp>
@@ -100,9 +98,6 @@ private:
     libbitcoin::client::zeromq_socket socket_;
     libbitcoin::client::obelisk_codec codec_;
 
-    // Guards access to object state:
-    std::recursive_mutex mutex_;
-
     /**
      * Last block height...duh
      */
@@ -158,12 +153,7 @@ private:
 
     // Transaction callback:
     callback cb_;
-
     block_height_callback height_cb_;
-
-    // Obelisk query thread:
-    std::atomic<bool> shutdown_;
-    std::thread looper_;
 
     // Database update (the mutex must be held before calling):
     void get_history(payment_address address, size_t from_height);
@@ -189,9 +179,7 @@ private:
 
     std::string utxo_to_id(output_point& pt);
 
-    // Query thread stuff:
     bool next_query();
-    void loop();
 };
 
 } // namespace libwallet

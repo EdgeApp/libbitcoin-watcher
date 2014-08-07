@@ -77,7 +77,8 @@ int main(int argc, const char *argv[])
     watcher watcher(context);
     watcher.watch_address(myaddr.encoded());
     watcher.connect("tcp://obelisk.unsystem.net:9091");
-    sleep(100);
+    for (int i = 0; i < 10; ++i)
+        watcher.wakeup();
 
     bc::transaction_output_list outputs;
     // To Friend
