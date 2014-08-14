@@ -23,7 +23,6 @@
 #include <functional>
 #include <mutex>
 #include <deque>
-#include <thread>
 #include <unordered_map>
 #include <bitcoin/client.hpp>
 #include <zmq.hpp>
@@ -72,6 +71,19 @@ public:
 
     BC_API watcher_status get_status();
     BC_API int get_unconfirmed_count();
+
+    /**
+     * Tells the loop() method to return.
+     */
+    BC_API void stop();
+
+    /**
+     * Call this function from a separate thread. It will run for an
+     * unlimited amount of time as it works to keep the transactions
+     * in the watcher up-to-date with the network. The function will
+     * eventually return when the watcher object is destroyed.
+     */
+    BC_API void loop();
 
     watcher(const watcher& copy) = delete;
     watcher& operator=(const watcher& copy) = delete;
@@ -174,7 +186,6 @@ private:
     // Obelisk query thread:
     std::atomic<bool> shutdown_;
     std::atomic<bool> request_done_;
-    std::thread looper_;
 
     // Database update (the mutex must be held before calling):
     void enqueue_tx_query(hash_digest txid, hash_digest parent_txid, bool mempool=true);
@@ -203,7 +214,6 @@ private:
     obelisk_query next_query();
     std::string get_server();
     void do_query(const obelisk_query& query);
-    void loop();
 };
 
 } // namespace libwallet

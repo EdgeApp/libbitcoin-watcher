@@ -39,13 +39,11 @@ constexpr uint8_t id_block_height = 0x60;
 
 BC_API watcher::~watcher()
 {
-    shutdown_ = true;
-    looper_.join();
 }
 
 BC_API watcher::watcher()
   : checked_priority_address_(false),
-    shutdown_(false), request_done_(false), looper_([this](){loop();})
+    shutdown_(false), request_done_(false)
 {
 }
 
@@ -855,11 +853,12 @@ void watcher::do_query(const obelisk_query& query)
     }
 }
 
-/**
- * The main watcher loop. Sleeps for some amount of time, then wakes up
- * and checks an address (assuming we have server connection information).
- */
-void watcher::loop()
+BC_API void watcher::stop()
+{
+    shutdown_ = true;
+}
+
+BC_API void watcher::loop()
 {
     while (!shutdown_)
     {

@@ -1,7 +1,8 @@
-#include <iostream>
-#include <string>
-#include <sstream>
 #include <fstream>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <thread>
 #include <bitcoin/watcher/watcher.hpp>
 
 /**
@@ -30,6 +31,8 @@ private:
     void cmd_save(std::stringstream& args);
     void cmd_load(std::stringstream& args);
 
+    void loop();
+
     void callback(const libbitcoin::transaction_type& tx);
 
     bc::hash_digest read_txid(std::stringstream& args);
@@ -37,15 +40,20 @@ private:
     bool read_filename(std::stringstream& args, std::string& out);
 
     libwallet::watcher watcher;
+    std::thread looper_;
     bool done_;
 };
 
 cli::~cli()
 {
+    watcher.stop();
+    looper_.join();
 }
 
 cli::cli()
-  : done_(false)
+  : watcher(),
+    looper_([this](){ loop(); }),
+    done_(false)
 {
     libwallet::watcher::callback cb =
         [this](const libbitcoin::transaction_type& tx)
@@ -236,6 +244,11 @@ void cli::cmd_load(std::stringstream& args)
 
     if (!watcher.load(bc::data_chunk(data, data + size)))
         std::cerr << "error while loading data" << std::endl;
+}
+
+void cli::loop()
+{
+    watcher.loop();
 }
 
 void cli::callback(const libbitcoin::transaction_type& tx)
