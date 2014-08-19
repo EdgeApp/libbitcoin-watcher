@@ -316,6 +316,15 @@ BC_API void watcher::set_height_callback(block_height_callback& cb)
 }
 
 /**
+ * Sets up the tx sent callback
+ */
+BC_API void watcher::set_tx_sent_callback(tx_sent_callback& cb)
+{
+    std::lock_guard<std::recursive_mutex> m(mutex_);
+    tx_send_cb_ = cb;
+}
+
+/**
  * Obtains a list of unspent outputs for an address. This is needed to spend
  * funds.
  */
@@ -532,6 +541,12 @@ void watcher::send_tx_error(const std::error_code& ec)
     request_done_ = true;
     std::cerr << "tx: Failed to send transaction" <<
         ec.message() << std::endl;
+
+    if (tx_send_cb_)
+    {
+        transaction_type type;
+        tx_send_cb_(ec, type);
+    }
 }
 
 void watcher::height_fetched(size_t height)
@@ -627,6 +642,13 @@ void watcher::sent_tx(const transaction_type& tx)
 
     // Watch this transaction so we can update our outputs
     watch_tx_mem(hash_transaction(tx));
+
+
+    if (tx_send_cb_)
+    {
+        std::error_code e;
+        tx_send_cb_(e, tx);
+    }
 
     std::cout << "Tx sent"  << std::endl;
 }
@@ -762,6 +784,11 @@ void watcher::do_query(const obelisk_query& query)
 
     if (!socket.connect(server))
     {
+        if (query.type == obelisk_query::send_tx)
+        {
+            std::error_code e(1, std::system_category());
+            watcher::send_tx_error(e);
+        }
         std::cout << "watcher: Network error" << std::endl;
         return;
     }
