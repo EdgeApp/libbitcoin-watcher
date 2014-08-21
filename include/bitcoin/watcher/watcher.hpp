@@ -36,37 +36,43 @@ using namespace libbitcoin;
  * watch one or more bitcoin addresses for activity (Actually, since the
  * client library is broken, it opens a new obelisk connection every time.)
  */
-class watcher
+class BC_API watcher
 {
 public:
     BC_API ~watcher();
     BC_API watcher();
 
+    // - Server: -----------------------
     BC_API void disconnect();
     BC_API void connect(const std::string& server);
-    BC_API void send_tx(const transaction_type& tx);
 
+    // - Serialization: ----------------
     BC_API data_chunk serialize();
     BC_API bool load(const data_chunk& data);
 
+    // - Addresses: --------------------
     BC_API void watch_address(const payment_address& address);
-    BC_API void watch_tx_mem(const hash_digest& txid);
     BC_API void prioritize_address(const payment_address& address);
+
+    // - Transactions: -----------------
+    BC_API void send_tx(const transaction_type& tx);
     BC_API transaction_type find_tx(hash_digest txid);
+    BC_API bool get_tx_height(hash_digest txid, int& height);
+    BC_API output_info_list get_utxos(const payment_address& address);
 
     typedef std::function<void (const transaction_type&)> callback;
     BC_API void set_callback(callback& cb);
 
-    typedef std::function<void (const size_t)> block_height_callback;
-    BC_API void set_height_callback(block_height_callback& cb);
-
     typedef std::function<void (std::error_code, const transaction_type&)> tx_sent_callback;
     BC_API void set_tx_sent_callback(tx_sent_callback& cb);
 
-    BC_API output_info_list get_utxos(const payment_address& address);
+    // - Chain height: -----------------
     BC_API size_t get_last_block_height();
-    BC_API bool get_tx_height(hash_digest txid, int& height);
 
+    typedef std::function<void (const size_t)> block_height_callback;
+    BC_API void set_height_callback(block_height_callback& cb);
+
+    // - Status queries: ---------------
     typedef enum {
         watcher_sync_ok = 0,
         watcher_syncing
@@ -74,6 +80,8 @@ public:
 
     BC_API watcher_status get_status();
     BC_API int get_unconfirmed_count();
+
+    // - Thread implementation: --------
 
     /**
      * Tells the loop() method to return.
@@ -90,6 +98,9 @@ public:
 
     watcher(const watcher& copy) = delete;
     watcher& operator=(const watcher& copy) = delete;
+
+    // Mainly used internally, but also appears in the example code:
+    BC_API void watch_tx_mem(const hash_digest& txid);
 
 private:
     zmq::context_t ctx_;
