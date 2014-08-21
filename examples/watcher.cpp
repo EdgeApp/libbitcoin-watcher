@@ -30,6 +30,7 @@ private:
     void cmd_utxos(std::stringstream& args);
     void cmd_save(std::stringstream& args);
     void cmd_load(std::stringstream& args);
+    void cmd_dump(std::stringstream& args);
 
     void loop();
 
@@ -46,8 +47,6 @@ private:
 
 cli::~cli()
 {
-    watcher.stop();
-    looper_.join();
 }
 
 cli::cli()
@@ -92,6 +91,7 @@ int cli::run()
         else if (command == "utxos")        cmd_utxos(reader);
         else if (command == "save")         cmd_save(reader);
         else if (command == "load")         cmd_load(reader);
+        else if (command == "dump")         cmd_dump(reader);
         else
             std::cout << "unknown command " << command << std::endl;
     }
@@ -101,6 +101,8 @@ int cli::run()
 void cli::cmd_exit()
 {
     std::cout << "waiting for thread to stop..." << std::endl;
+    watcher.stop();
+    looper_.join();
     done_ = true;
 }
 
@@ -116,6 +118,7 @@ void cli::cmd_help()
     std::cout << "  utxos <address>   - get utxos for an address" << std::endl;
     std::cout << "  save <filename>   - dump the database to disk" << std::endl;
     std::cout << "  load <filename>   - load the database from disk" << std::endl;
+    std::cout << "  dump              - display the database contents" << std::endl;
 }
 
 void cli::cmd_connect(std::stringstream& args)
@@ -244,6 +247,11 @@ void cli::cmd_load(std::stringstream& args)
 
     if (!watcher.load(bc::data_chunk(data, data + size)))
         std::cerr << "error while loading data" << std::endl;
+}
+
+void cli::cmd_dump(std::stringstream& args)
+{
+    watcher.dump();
 }
 
 void cli::loop()

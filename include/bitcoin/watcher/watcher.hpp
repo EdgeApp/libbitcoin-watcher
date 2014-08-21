@@ -19,11 +19,8 @@
 #ifndef LIBBITCOIN_WATCHER_WATCHER_HPP
 #define LIBBITCOIN_WATCHER_WATCHER_HPP
 
-#include <atomic>
-#include <functional>
-#include <mutex>
-#include <deque>
-#include <unordered_map>
+#include <bitcoin/watcher/address_updater.hpp>
+#include <unordered_set>
 #include <bitcoin/client.hpp>
 #include <zmq.hpp>
 
@@ -102,134 +99,53 @@ public:
     // Mainly used internally, but also appears in the example code:
     BC_API void watch_tx_mem(const hash_digest& txid);
 
+    // Debugging code:
+    BC_API void dump();
+
 private:
+    tx_db db_;
     zmq::context_t ctx_;
 
-    // Guards access to object state:
-    std::recursive_mutex mutex_;
+    // Cached addresses, for when we are disconnected:
+    std::unordered_set<bc::payment_address> addresses_;
+    bc::payment_address priority_address_;
 
-    /**
-     * A pending query to the obelisk server.
-     */
-    struct obelisk_query {
-        enum {
-            none, address_history, get_tx, get_tx_mem, send_tx, block_height
-        } type;
-        // address_history:
-        payment_address address;
-        size_t from_height;
-        // get_tx, get_tx_mem:
-        hash_digest txid;
-        // use for fetching prev outputs
-        hash_digest parent_txid;
-        // send_tx:
-        transaction_type tx;
-    };
+    // Socket for talking to the thread:
+    std::string socket_name_;
+    zmq::socket_t socket_;
 
-    /**
-     * Last block height...duh
-     */
-    size_t last_block_height_;
-    bool check_height = true;
+    // Methods for sending messages on that socket:
+    void send_disconnect();
+    void send_connect(std::string server);
+    void send_watch_tx(hash_digest tx_hash);
+    void send_watch_addr(payment_address address, unsigned poll_ms);
+    void send_send(const transaction_type& tx);
 
-    /**
-     * A transaction output putting funds into an address. If the spend
-     * field is null, this output is unspent.
-     */
-    struct txo_type {
-        output_point output;
-        size_t output_height;
-        uint64_t value;
-        input_point spend; // null if this output hasn't been spent
-    };
-
-    /**
-     * An entry in the address table.
-     */
-    struct address_row {
-        size_t last_height;
-        bool stale; // have we fetched this address yet?
-        std::unordered_map<std::string, txo_type> outputs;
-    };
-
-    // Addresses we care about:
-    std::unordered_map<payment_address, address_row> addresses_;
-
-    // Transaction table:
-    struct tx_row {
-        transaction_type tx;
-        size_t output_height;
-        bool relevant;
-    };
-    std::unordered_map<hash_digest, tx_row> tx_table_;
-
-    /**
-     * If mem pool tx outputs, mark those outputs as pending so they are
-     * excluded from utxos
-     */
-    std::unordered_map<std::string, bool> output_pending_;
-    /**
-     * Check mem pool for these transactions, they are removed once they are in
-     * the blockchain
-     */
-    std::unordered_map<hash_digest, size_t> watch_txs_;
-
-    // Stuff waiting for the query thread:
-    size_t last_address_;
-    struct pending_get_tx {
-        hash_digest txid;
-        hash_digest parent_txid;
-        bool mempool;
-    };
-    std::deque<pending_get_tx> get_tx_queue_;
-    std::deque<transaction_type> send_tx_queue_;
-    payment_address priority_address_;
-    bool checked_priority_address_;
-
-    // Transaction callback:
+    // The thread uses these callbacks, so put them in a mutex:
+    std::mutex mutex_;
     callback cb_;
-
     block_height_callback height_cb_;
-
     tx_sent_callback tx_send_cb_;
 
-    // Server connection info:
-    std::string server_;
+    // Everything below this point is only touched by the thread:
 
-    // Server poll sleep
-    size_t poll_sleep = 5;
+    // Active connection (if any):
+    struct connection
+    {
+        ~connection();
+        connection(tx_db& db, void *ctx, tx_updater::send_handler&& on_send);
 
-    // Obelisk query thread:
-    std::atomic<bool> shutdown_;
-    std::atomic<bool> request_done_;
+        bc::client::zeromq_socket socket;
+        bc::client::obelisk_codec codec;
+        tx_updater txu;
+        address_updater adu;
+    };
+    connection* connection_;
 
-    // Database update (the mutex must be held before calling):
-    void enqueue_tx_query(hash_digest txid, hash_digest parent_txid, bool mempool=true);
-    void insert_tx(const transaction_type& tx, const hash_digest parent_txid);
-    void enque_all_inputs(const transaction_type& tx);
-    bool has_all_prev_outputs(const hash_digest& txid);
-    void mark_outputs_pending(const transaction_type& tx, bool pending);
-
-    // Callbacks (these grab the mutex):
-    void height_fetch_error(const std::error_code& ec);
-    void history_fetch_error(const std::error_code& ec);
-    void get_tx_error(const std::error_code& ec);
-    void get_tx_mem_error(const std::error_code& ec,
-        hash_digest txid, hash_digest parent_txid);
-    void send_tx_error(const std::error_code& ec);
-
-    void height_fetched(size_t height);
-    void history_fetched(const payment_address& address,
-        const blockchain::history_list& history);
-    void got_tx(const transaction_type& tx, const hash_digest& parent_txid);
-    void sent_tx(const transaction_type& tx);
-
-    std::string utxo_to_id(output_point& pt);
-
-    // Query thread stuff:
-    obelisk_query next_query();
-    std::string get_server();
-    void do_query(const obelisk_query& query);
+    bool command(uint8_t* data, size_t size, zmq::socket_t& socket);
+    void on_add(const transaction_type& tx);
+    void on_height(size_t height);
+    void on_sent(const std::error_code& error, const transaction_type& tx);
 };
 
 } // namespace libwallet

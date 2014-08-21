@@ -17,7 +17,6 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include <bitcoin/watcher/watcher.hpp>
-#include <bitcoin/constants.hpp>
 
 #include <unistd.h>
 #include <iostream>
@@ -27,43 +26,62 @@
 namespace libwallet {
 
 using std::placeholders::_1;
+using std::placeholders::_2;
 
-// Serialization stuff:
-constexpr uint32_t serial_magic = 0x3eab61c3;
-constexpr uint8_t id_address_row = 0x10;
-constexpr uint8_t id_address_output = 0x11;
-constexpr uint8_t id_tx_row = 0x20;
-constexpr uint8_t id_get_tx_row = 0x30;
-constexpr uint8_t id_pending_outputs = 0x40;
-constexpr uint8_t id_watch_txs = 0x50;
-constexpr uint8_t id_block_height = 0x60;
+constexpr unsigned default_poll = 10000;
+constexpr unsigned priority_poll = 1000;
+
+static unsigned watcher_id = 0;
+
+enum {
+    msg_quit,
+    msg_disconnect,
+    msg_connect,
+    msg_watch_tx,
+    msg_watch_addr,
+    msg_send
+};
 
 BC_API watcher::~watcher()
 {
 }
 
 BC_API watcher::watcher()
-  : checked_priority_address_(false),
-    shutdown_(false), request_done_(false)
+  : db_(std::bind(&watcher::on_add, this, _1),
+        std::bind(&watcher::on_height, this, _1)),
+    socket_(ctx_, ZMQ_REQ),
+    connection_(nullptr)
 {
+    std::stringstream name;
+    name << "inproc://watcher-" << watcher_id++;
+    socket_name_ = name.str();
+    socket_.bind(socket_name_.c_str());
+    int linger = 0;
+    socket_.setsockopt(ZMQ_LINGER, &linger, sizeof(linger));
 }
 
 BC_API void watcher::disconnect()
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    server_ = "";
+    send_disconnect();
+}
+
+static bool is_valid(const payment_address& address)
+{
+    return address.version() != payment_address::invalid_version;
 }
 
 BC_API void watcher::connect(const std::string& server)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    server_ = server;
+    send_connect(server);
+    for (auto& address: addresses_)
+        send_watch_addr(address, default_poll);
+    if (is_valid(priority_address_))
+        send_watch_addr(priority_address_, priority_poll);
 }
 
 BC_API void watcher::send_tx(const transaction_type& tx)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    send_tx_queue_.push_back(tx);
+    send_send(tx);
 }
 
 /**
@@ -71,208 +89,23 @@ BC_API void watcher::send_tx(const transaction_type& tx)
  */
 BC_API data_chunk watcher::serialize()
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-
-    std::ostringstream stream;
-    auto serial = make_serializer(std::ostreambuf_iterator<char>(stream));
-
-    // Magic version bytes:
-    serial.write_4_bytes(serial_magic);
-
-    // Address table:
-    for (const auto& row: addresses_)
-    {
-        serial.write_byte(id_address_row);
-        // Address:
-        payment_address address = row.first;
-        serial.write_byte(address.version());
-        serial.write_short_hash(address.hash());
-        serial.write_8_bytes(row.second.last_height);
-        serial.write_byte(row.second.stale);
-        // Output table:
-        for (const auto& output: row.second.outputs)
-        {
-            serial.write_byte(id_address_output);
-            serial.write_byte(address.version());
-            serial.write_short_hash(address.hash());
-            serial.write_hash(output.second.output.hash);
-            serial.write_4_bytes(output.second.output.index);
-            serial.write_8_bytes(output.second.value);
-            serial.write_8_bytes(output.second.output_height);
-            serial.write_hash(output.second.spend.hash);
-            serial.write_4_bytes(output.second.spend.index);
-        }
-    }
-
-    // Tx table:
-    for (const auto& row: tx_table_)
-    {
-        serial.write_byte(id_tx_row);
-        serial.write_hash(row.first);
-        serial.set_iterator(satoshi_save(row.second.tx, serial.iterator()));
-        serial.write_8_bytes(row.second.output_height);
-        serial.write_byte(row.second.relevant);
-    }
-
-    // Pending tx list:
-    for (auto row: get_tx_queue_)
-    {
-        serial.write_byte(id_get_tx_row);
-        serial.write_hash(row.txid);
-    }
-
-    // Output status
-    for (auto row: output_pending_)
-    {
-        serial.write_byte(id_pending_outputs);
-        serial.write_string(row.first);
-        serial.write_byte(row.second);
-    }
-
-    for (auto row: watch_txs_)
-    {
-        serial.write_byte(id_watch_txs);
-        serial.write_hash(row.first);
-        serial.write_8_bytes(row.second);
-    }
-
-    serial.write_byte(id_block_height);
-    serial.write_8_bytes(last_block_height_);
-
-    // OMG HAX!
-    std::string str = stream.str();
-    auto data = reinterpret_cast<const uint8_t*>(str.data());
-    data_chunk out(data, data + str.size());
-    return out;
-}
-
-template <class Serial>
-static payment_address read_address(Serial& serial)
-{
-    auto version = serial.read_byte();
-    auto hash = serial.read_short_hash();
-    return payment_address(version, hash);
+    return db_.serialize();
 }
 
 BC_API bool watcher::load(const data_chunk& data)
 {
-    auto serial = make_deserializer(data.begin(), data.end());
-    std::unordered_map<payment_address, address_row> addresses;
-    std::unordered_map<hash_digest, tx_row> tx_table;
-    std::deque<pending_get_tx> get_tx_queue;
-
-    try
-    {
-        // Header bytes:
-        if (serial_magic != serial.read_4_bytes())
-            return false;
-
-        while (serial.iterator() != data.end())
-        {
-            switch (serial.read_byte())
-            {
-                case id_address_row:
-                {
-                    auto address = read_address(serial);
-                    address_row row;
-                    row.last_height = serial.read_8_bytes();
-                    row.stale = serial.read_byte();
-                    addresses[address] = row;
-                    break;
-                }
-
-                case id_address_output:
-                {
-                    auto address = read_address(serial);
-                    txo_type row;
-                    row.output.hash = serial.read_hash();
-                    row.output.index = serial.read_4_bytes();
-                    row.value = serial.read_8_bytes();
-                    row.output_height = serial.read_8_bytes();
-                    row.spend.hash = serial.read_hash();
-                    row.spend.index = serial.read_4_bytes();
-
-                    std::string id = utxo_to_id(row.output);
-                    addresses[address].outputs[id] = row;
-                    break;
-                }
-
-                case id_tx_row:
-                {
-                    auto hash = serial.read_hash();
-                    transaction_type tx;
-                    satoshi_load(serial.iterator(), data.end(), tx);
-                    auto step = serial.iterator() + satoshi_raw_size(tx);
-                    serial.set_iterator(step);
-                    size_t height = serial.read_8_bytes();
-                    bool relevant = serial.read_byte();
-                    tx_table[hash] = tx_row{tx, height, relevant};
-                    break;
-                }
-
-                case id_get_tx_row:
-                {
-                    pending_get_tx row;
-                    row.txid = serial.read_hash();
-                    row.mempool = false;
-                    break;
-                }
-
-                case id_pending_outputs:
-                {
-                    std::string txid = serial.read_string();
-                    bool pending = serial.read_byte();
-                    output_pending_[txid] = pending;
-                    break;
-                }
-
-                case id_watch_txs:
-                {
-                    hash_digest txid = serial.read_hash();
-                    size_t count = serial.read_8_bytes();
-                    watch_txs_[txid] = count;
-                    break;
-                }
-
-                case id_block_height:
-                {
-                    last_block_height_ = serial.read_8_bytes();
-                    break;
-                }
-
-                default:
-                    return false;
-            }
-        }
-    }
-    catch (end_of_stream)
-    {
-        return false;
-    }
-    addresses_ = addresses;
-    tx_table_ = tx_table;
-    get_tx_queue_ = get_tx_queue;
-    return true;
+    return db_.load(data);
 }
 
 BC_API void watcher::watch_address(const payment_address& address)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    if (addresses_.find(address) == addresses_.end())
-    {
-        addresses_[address] = address_row{0, true, std::unordered_map<std::string, txo_type>()};
-    }
+    addresses_.insert(address);
+    send_watch_addr(address, default_poll);
 }
 
 BC_API void watcher::watch_tx_mem(const hash_digest& txid)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    auto row = watch_txs_.find(txid);
-    if (row == watch_txs_.end())
-    {
-        watch_txs_[txid] = 0;
-    }
-    watch_txs_[txid]++;
+    send_watch_tx(txid);
     std::cout << "Watching tx " << txid << std::endl;
 }
 
@@ -282,19 +115,16 @@ BC_API void watcher::watch_tx_mem(const hash_digest& txid)
  */
 BC_API void watcher::prioritize_address(const payment_address& address)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
+    if (is_valid(priority_address_))
+        send_watch_addr(priority_address_, default_poll);
     priority_address_ = address;
+    if (is_valid(priority_address_))
+        send_watch_addr(priority_address_, priority_poll);
 }
-
 
 BC_API transaction_type watcher::find_tx(hash_digest txid)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    auto tx = tx_table_.find(txid);
-    if (tx != tx_table_.end())
-        return tx->second.tx;
-    else
-        return transaction_type();
+    return db_.get_tx(txid);
 }
 
 /**
@@ -303,7 +133,7 @@ BC_API transaction_type watcher::find_tx(hash_digest txid)
  */
 BC_API void watcher::set_callback(callback& cb)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     cb_ = cb;
 }
 
@@ -312,7 +142,7 @@ BC_API void watcher::set_callback(callback& cb)
  */
 BC_API void watcher::set_height_callback(block_height_callback& cb)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     height_cb_ = cb;
 }
 
@@ -321,7 +151,7 @@ BC_API void watcher::set_height_callback(block_height_callback& cb)
  */
 BC_API void watcher::set_tx_sent_callback(tx_sent_callback& cb)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     tx_send_cb_ = cb;
 }
 
@@ -331,586 +161,242 @@ BC_API void watcher::set_tx_sent_callback(tx_sent_callback& cb)
  */
 BC_API output_info_list watcher::get_utxos(const payment_address& address)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    output_info_list out;
-
-    auto row = addresses_.find(address);
-    if (row == addresses_.end())
-        return out;
-
-    for (auto& output: row->second.outputs) {
-        // Skip outputs that are pending
-        if (!output.second.output_height)
-            continue;
-
-        // Skip outputs which are pending
-        if (output_pending_[utxo_to_id(output.second.output)])
-            continue;
-
-        if (null_hash == output.second.spend.hash)
-        {
-            output_info_type info;
-            info.point = output.second.output;
-            info.value = output.second.value;
-            out.push_back(info);
-        }
-    }
-    return out;
+    return db_.get_utxos(address);
 }
 
 BC_API size_t watcher::get_last_block_height()
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    return last_block_height_;
+    return db_.last_height();
 }
 
 BC_API bool watcher::get_tx_height(hash_digest txid, int& height)
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    auto row = tx_table_.find(txid);
-    if (row == tx_table_.end())
-    {
-        height = 0;
-        return false;
-    }
-    else
-    {
-        height = row->second.output_height;
-        return true;
-    }
+    height = db_.get_tx_height(txid);
+    return db_.has_tx(txid);
 }
 
 BC_API watcher::watcher_status watcher::get_status()
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    // If our queues have anything in them, we are sync-ing
-    if (send_tx_queue_.size() > 0 ||  get_tx_queue_.size() > 0)
-    {
-        return watcher_syncing;
-    }
-    // If we have any addresses marked as stale, we are sync-ing
-    for (auto &row : addresses_)
-    {
-        if (row.second.stale)
-        {
-            return watcher_syncing;
-        }
-    }
+    // This is a terrible hack!
     return watcher_sync_ok;
 }
 
 BC_API int watcher::get_unconfirmed_count()
 {
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    int c = 0;
-    for (const auto& row: tx_table_)
-    {
-        if (row.second.output_height == 0)
-            c++;
-    }
-    return c;
+    return db_.count_unconfirmed();
 }
 
-/**
- * Places a transaction in the queue if we don't already have it in the db.
- * Assumes the mutex is already being held.
- */
-void watcher::enqueue_tx_query(hash_digest txid, hash_digest parent_txid, bool mempool)
+void watcher::dump()
 {
-    // Only queue txs we don't have
-    if (tx_table_.find(txid) != tx_table_.end())
-        return;
-
-    if (mempool)
-        get_tx_queue_.push_back(pending_get_tx{txid, parent_txid, mempool});
-    else
-        get_tx_queue_.push_front(pending_get_tx{txid, parent_txid, mempool});
-}
-
-/**
- * Inserts a tx into the database, assuming the address table has already been
- * updated.
- * Assumes the mutex is already being held.
- */
-void watcher::insert_tx(const transaction_type& tx, const hash_digest parent_txid)
-{
-    hash_digest txid = hash_transaction(tx);
-    tx_table_[txid] = tx_row{tx, 0, parent_txid == null_hash};
-
-    // Remove from watch list
-    watch_txs_.erase(txid);
-
-    if (cb_)
-    {
-        if (has_all_prev_outputs(txid) && parent_txid == null_hash)
-        {
-            std::cout << "Calling cb with tx" << std::endl;
-            std::cout << pretty(tx) << std::endl;
-            cb_(tx);
-        }
-        else if (has_all_prev_outputs(parent_txid))
-        {
-            std::cout << "Calling cb for parent" << std::endl;
-            std::cout << pretty(tx_table_[parent_txid].tx) << std::endl;
-            cb_(tx_table_[parent_txid].tx);
-        }
-        else if (parent_txid == null_hash)
-        {
-            enque_all_inputs(tx);
-        }
-    }
-}
-
-/**
- * Enque all previous txs for this transaction
- * Assumes the mutex is already being held.
- */
-void watcher::enque_all_inputs(const transaction_type& tx)
-{
-    for (auto& input : tx.inputs)
-    {
-        enqueue_tx_query(input.previous_output.hash, hash_transaction(tx));
-    }
-}
-
-/**
- * Fetches transactions of the tx's inputs
- *
- * Assumes the mutex is already being held.
- */
-bool watcher::has_all_prev_outputs(const hash_digest& txid)
-{
-    if (txid == null_hash)
-        return false;
-
-    auto row = tx_table_.find(txid);
-    if (row == tx_table_.end())
-        return false;
-
-    for (auto& input : row->second.tx.inputs)
-    {
-        auto& prev = input.previous_output;
-        if (tx_table_.find(prev.hash) == tx_table_.end())
-            return false;
-    }
-    return true;
-}
-
-/* == Callbacks =========================================================== */
-
-void watcher::height_fetch_error(const std::error_code& ec)
-{
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    request_done_ = true;
-    std::cerr << "balance: Failed to fetch last block height: " <<
-        ec.message() << std::endl;
-}
-
-void watcher::history_fetch_error(const std::error_code& ec)
-{
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    request_done_ = true;
-    std::cerr << "balance: Failed to fetch history: " <<
-        ec.message() << std::endl;
-}
-
-void watcher::get_tx_error(const std::error_code& ec)
-{
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    request_done_ = true;
-    std::cerr << "tx: Failed to fetch transaction: " <<
-        ec.message() << std::endl;
-}
-
-void watcher::get_tx_mem_error(const std::error_code& ec,
-    hash_digest txid, hash_digest parent_txid)
-{
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    request_done_ = true;
-
-    // Try the blockchain instead:
-    if (ec == error::not_found)
-        enqueue_tx_query(txid, parent_txid, false);
-    else
-        std::cerr << "tx: Failed to fetch transaction: " <<
-            ec.message() << std::endl;
-}
-
-void watcher::send_tx_error(const std::error_code& ec)
-{
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    request_done_ = true;
-    std::cerr << "tx: Failed to send transaction" <<
-        ec.message() << std::endl;
-
-    if (tx_send_cb_)
-    {
-        transaction_type type;
-        tx_send_cb_(ec, type);
-    }
-}
-
-void watcher::height_fetched(size_t height)
-{
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    request_done_ = true;
-
-    size_t old_height = last_block_height_;
-    last_block_height_ = height;
-
-    if (old_height != last_block_height_ && height_cb_)
-    {
-        std::cout << "Change in height. Calling last_block_height_" << std::endl;
-        height_cb_(last_block_height_);
-    }
-
-    std::cout << "Last Height " << height << std::endl;
-}
-
-void watcher::history_fetched(const payment_address& address,
-    const blockchain::history_list& history)
-{
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    request_done_ = true;
-
-    std::vector<blockchain::history_row> history_sorted(history.begin(), history.end());
-    std::sort(history_sorted.begin(), history_sorted.end(),
-              [](const blockchain::history_row& a,
-                 const blockchain::history_row& b) {
-        return a.output_height < b.output_height;
-    });
-
-    // Update our state with the new info:
-    for (auto& row: history_sorted)
-    {
-        enqueue_tx_query(row.output.hash, null_hash, true);
-        auto tx = tx_table_.find(row.output.hash);
-        if (tx != tx_table_.end())
-            tx->second.output_height = row.output_height;
-
-        if (row.spend.hash != null_hash)
-        {
-            enqueue_tx_query(row.spend.hash, null_hash, true);
-            auto tx = tx_table_.find(row.spend.hash);
-            if (tx != tx_table_.end())
-                tx->second.output_height = row.spend_height;
-        }
-        txo_type output = {row.output, row.output_height, row.value, row.spend};
-        std::string id = utxo_to_id(output.output);
-
-        // Update output database
-        std::cout << "Spend Height: " << id << " " << row.spend_height << std::endl;
-        if (row.spend_height > 0 && row.spend_height != bc::max_height)
-            output_pending_[id] = false;
-        addresses_[address].outputs[id] = output;
-    }
-    addresses_[address].last_height = 0;
-    addresses_[address].stale = false;
-
-    std::cout << "Got address " << address.encoded() << std::endl;
-}
-
-void watcher::got_tx(const transaction_type& tx,
-    const hash_digest& parent_txid)
-{
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    request_done_ = true;
-
-    // Update our state with the new info:
-    insert_tx(tx, parent_txid);
-}
-
-void watcher::mark_outputs_pending(const transaction_type& tx, bool pending)
-{
-    for (auto t : tx.inputs)
-    {
-        std::string id = utxo_to_id(t.previous_output);
-        output_pending_[id] = pending;
-    }
-
-    for (auto row : output_pending_)
-    {
-        std::cout << "mark_outputs_pending Pending: " << row.first << " " << row.second << std::endl;
-    }
-
-}
-
-void watcher::sent_tx(const transaction_type& tx)
-{
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    request_done_ = true;
-
-    // TODO: Fire callback? Update database?
-    // The history update process will handle this for now.
-
-    // Don't allow us to spend these outputs
-    mark_outputs_pending(tx, true);
-
-    // Watch this transaction so we can update our outputs
-    watch_tx_mem(hash_transaction(tx));
-
-
-    if (tx_send_cb_)
-    {
-        std::error_code e;
-        tx_send_cb_(e, tx);
-    }
-
-    std::cout << "Tx sent"  << std::endl;
-}
-
-std::string watcher::utxo_to_id(output_point& pt)
-{
-    std::string id(encode_hex(pt.hash));
-    id.append(std::to_string(pt.index));
-    return id;
-}
-
-/**
- * Figures out the next thing for the query thread to work on. This happens
- * under a mutex lock.
- */
-watcher::obelisk_query watcher::next_query()
-{
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    obelisk_query out;
-
-    // Process pending sends, if any:
-    if (!send_tx_queue_.empty())
-    {
-        out.type = obelisk_query::send_tx;
-        out.tx = send_tx_queue_.front();
-        send_tx_queue_.pop_front();
-        return out;
-    }
-
-    // Process pending tx queries, if any:
-    if (!get_tx_queue_.empty())
-    {
-        auto pending = get_tx_queue_.front();
-        get_tx_queue_.pop_front();
-
-        out.type = obelisk_query::get_tx;
-        if (pending.mempool)
-            out.type = obelisk_query::get_tx_mem;
-        out.txid = pending.txid;
-        out.parent_txid = pending.parent_txid;
-        return out;
-    }
-
-    // Handle the high-priority address, if we have one:
-    if (!checked_priority_address_)
-    {
-        auto row = addresses_.find(priority_address_);
-        if (row != addresses_.end())
-        {
-            out.type = obelisk_query::address_history;
-            out.address = row->first;
-            out.from_height = row->second.last_height;
-            checked_priority_address_ = true;
-            return out;
-        }
-    }
-    checked_priority_address_ = false;
-
-    // Stop if no addresses:
-    if (!addresses_.size())
-    {
-        out.type = obelisk_query::none;
-        return out;
-    }
-
-    if (check_height)
-    {
-        check_height = false;
-        out.type = obelisk_query::block_height;
-        return out;
-    }
-    // Fetch "Stale" addresses
-    for (const auto &row : addresses_)
-    {
-        if (row.second.stale)
-        {
-            out.type = obelisk_query::address_history;
-            out.address = row.first;
-            out.from_height = row.second.last_height;
-            return out;
-        }
-    }
-
-    // Advance the counter:
-    ++last_address_;
-    if (addresses_.size() <= last_address_)
-    {
-        last_address_ = 0;
-        check_height = true;
-        for (auto& txrow : watch_txs_)
-        {
-            txrow.second++;
-            enqueue_tx_query(txrow.first, null_hash, true);
-        }
-    }
-
-    // Find the indexed address:
-    auto it = addresses_.begin();
-    for (size_t i = 0; i < last_address_; ++i)
-        ++it;
-    out.type = obelisk_query::address_history;
-    out.address = it->first;
-    out.from_height = it->second.last_height;
-    return out;
-}
-
-/**
- * Obtains the server string for the watcher thread, using a mutex lock.
- */
-std::string watcher::get_server()
-{
-    std::lock_guard<std::recursive_mutex> m(mutex_);
-    return server_;
-}
-
-/**
- * Connects to an obelisk server and makes a request. This happens outside
- * the mutex lock.
- */
-void watcher::do_query(const obelisk_query& query)
-{
-    // Connect to the sever:
-    std::string server = get_server();
-    if ("" == server)
-    {
-        std::cout << "No server" << std::endl;
-        return;
-    }
-
-    // Connect to the server:
-    libbitcoin::client::zeromq_socket socket(ctx_);
-    libbitcoin::client::obelisk_codec codec(socket);
-
-    if (!socket.connect(server))
-    {
-        if (query.type == obelisk_query::send_tx)
-        {
-            std::error_code e(1, std::system_category());
-            watcher::send_tx_error(e);
-        }
-        std::cout << "watcher: Network error" << std::endl;
-        return;
-    }
-
-    // Make the request:
-    request_done_ = false;
-    switch (query.type)
-    {
-        case obelisk_query::block_height:
-        {
-            std::cout << "Fetch block height " << std::endl;
-
-            auto eh = std::bind(&watcher::height_fetch_error, this, _1);
-            auto handler = [this](size_t height)
-            {
-                height_fetched(height);
-            };
-            codec.fetch_last_height(eh, handler);
-            break;
-        }
-        case obelisk_query::address_history:
-        {
-            std::cout << "Get address " << query.address.encoded() << std::endl;
-
-            auto eh = std::bind(&watcher::history_fetch_error, this, _1);
-            auto handler = [this, query](
-                const blockchain::history_list& history)
-            {
-                history_fetched(query.address, history);
-            };
-            codec.address_fetch_history(eh, handler,
-                query.address, query.from_height);
-            break;
-        }
-        case obelisk_query::get_tx:
-        {
-            std::cout << "Get tx " << encode_hex(query.txid) << std::endl;
-
-            auto eh = std::bind(&watcher::get_tx_error, this, _1);
-            auto handler = [this, query](const transaction_type& tx)
-            {
-                got_tx(tx, query.parent_txid);
-            };
-            codec.fetch_transaction(eh, handler, query.txid);
-            break;
-        }
-        case obelisk_query::get_tx_mem:
-        {
-            std::cout << "Get tx mem " << encode_hex(query.txid) << std::endl;
-
-            auto eh = std::bind(&watcher::get_tx_mem_error, this, _1,
-                query.txid, query.parent_txid);
-            auto hander = [this, query](const transaction_type& tx)
-            {
-                got_tx(tx, query.parent_txid);
-            };
-            codec.fetch_unconfirmed_transaction(eh, hander, query.txid);
-            break;
-        }
-        case obelisk_query::send_tx:
-        {
-            std::cout << "Send tx " << std::endl;
-
-            auto eh = std::bind(&watcher::send_tx_error, this, _1);
-            auto handler = [this, query]()
-            {
-                sent_tx(query.tx);
-            };
-            codec.broadcast_transaction(eh, handler, query.tx);
-            break;
-        }
-        default:
-            break;
-    }
-
-    // Wait for results:
-    int timeout = 0;
-    while (!request_done_ && timeout < 100)
-    {
-        zmq_pollitem_t pi = socket.pollitem();
-        zmq_poll(&pi, 1, 100);
-        if (pi.revents)
-            socket.forward(codec);
-        timeout++;
-    }
-    if (!request_done_)
-    {
-        std::cout << "Timed out" << std::endl;
-    }
+    db_.dump();
 }
 
 BC_API void watcher::stop()
 {
-    shutdown_ = true;
+    uint8_t req = msg_quit;
+    socket_.send(&req, 1);
+    // No recv here
 }
 
 BC_API void watcher::loop()
 {
-    while (!shutdown_)
+    zmq::socket_t socket(ctx_, ZMQ_REP);
+    socket.connect(socket_name_.c_str());
+    int linger = 0;
+    socket.setsockopt(ZMQ_LINGER, &linger, sizeof(linger));
+
+    bool done = false;
+    while (!done)
     {
-        // Pick a random address to query:
-        auto query = next_query();
+        int delay = -1;
+        std::vector<zmq_pollitem_t> items;
+        items.reserve(2);
+        zmq_pollitem_t inproc_item = { socket, 0, ZMQ_POLLIN, 0 };
+        items.push_back(inproc_item);
+        if (connection_)
+        {
+            items.push_back(connection_->socket.pollitem());
+            auto next_wakeup = connection_->codec.wakeup();
+            next_wakeup = bc::client::min_sleep(next_wakeup,
+                connection_->txu.wakeup());
+            next_wakeup = bc::client::min_sleep(next_wakeup,
+                connection_->adu.wakeup());
+            if (next_wakeup.count())
+                delay = next_wakeup.count();
+        }
+        zmq::poll(items.data(), items.size(), delay);
 
-        // Query the address:
-        if (query.type != obelisk_query::none)
-            do_query(query);
-        else
-            std::cout << "Skipping" << std::endl;
-
-        if (!get_tx_queue_.empty())
-            poll_sleep = 0;
-        else
-            poll_sleep = 5;
-
-        sleep(poll_sleep); // LOL!
+        if (connection_ && items[1].revents)
+            connection_->socket.forward(connection_->codec);
+        if (items[0].revents)
+        {
+            zmq::message_t msg;
+            socket.recv(&msg);
+            if (!command(static_cast<uint8_t*>(msg.data()), msg.size(), socket))
+                done = true;
+        }
     }
+    delete connection_;
+}
+
+void watcher::send_disconnect()
+{
+    uint8_t req = msg_disconnect;
+    socket_.send(&req, 1);
+    zmq::message_t msg;
+    socket_.recv(&msg);
+}
+
+void watcher::send_connect(std::string server)
+{
+    std::basic_ostringstream<uint8_t> stream;
+    auto serial = bc::make_serializer(std::ostreambuf_iterator<uint8_t>(stream));
+    serial.write_byte(msg_connect);
+    serial.write_data(server);
+    auto str = stream.str();
+    socket_.send(str.data(), str.size());
+    zmq::message_t msg;
+    socket_.recv(&msg);
+}
+
+void watcher::send_watch_tx(hash_digest tx_hash)
+{
+    std::basic_ostringstream<uint8_t> stream;
+    auto serial = bc::make_serializer(std::ostreambuf_iterator<uint8_t>(stream));
+    serial.write_byte(msg_watch_tx);
+    serial.write_hash(tx_hash);
+    auto str = stream.str();
+    socket_.send(str.data(), str.size());
+    zmq::message_t msg;
+    socket_.recv(&msg);
+}
+
+void watcher::send_watch_addr(payment_address address, unsigned poll_ms)
+{
+    std::basic_ostringstream<uint8_t> stream;
+    auto serial = bc::make_serializer(std::ostreambuf_iterator<uint8_t>(stream));
+    serial.write_byte(msg_watch_addr);
+    serial.write_byte(address.version());
+    serial.write_short_hash(address.hash());
+    serial.write_4_bytes(poll_ms);
+    auto str = stream.str();
+    socket_.send(str.data(), str.size());
+    zmq::message_t msg;
+    socket_.recv(&msg);
+}
+
+void watcher::send_send(const transaction_type& tx)
+{
+    std::basic_ostringstream<uint8_t> stream;
+    auto serial = bc::make_serializer(std::ostreambuf_iterator<uint8_t>(stream));
+    serial.write_byte(msg_send);
+    serial.set_iterator(satoshi_save(tx, serial.iterator()));
+    auto str = stream.str();
+    socket_.send(str.data(), str.size());
+    zmq::message_t msg;
+    socket_.recv(&msg);
+}
+
+bool watcher::command(uint8_t* data, size_t size, zmq::socket_t& socket)
+{
+    uint8_t out = 1;
+    auto serial = bc::make_deserializer(data, data + size);
+    switch (serial.read_byte())
+    {
+    case msg_quit:
+        delete connection_;
+        connection_ = nullptr;
+        return false;
+
+    case msg_disconnect:
+        delete connection_;
+        connection_ = nullptr;
+        socket.send(&out, 1);
+        return true;
+
+    case msg_connect:
+        {
+            std::string server(data + 1, data + size);
+            delete connection_;
+            connection_ = new connection(db_, ctx_,
+                std::bind(&watcher::on_sent, this, _1, _2));
+            if (!connection_->socket.connect(server))
+            {
+                delete connection_;
+                connection_ = nullptr;
+                out = 0;
+            }
+            connection_->txu.start();
+        }
+        socket.send(&out, 1);
+        return true;
+
+    case msg_watch_tx:
+        {
+            auto tx_hash = serial.read_hash();
+            if (connection_)
+                connection_->txu.watch(tx_hash);
+        }
+        socket.send(&out, 1);
+        return true;
+
+    case msg_watch_addr:
+        {
+            auto version = serial.read_byte();
+            auto hash = serial.read_short_hash();
+            payment_address address(version, hash);
+            std::chrono::milliseconds poll_time(serial.read_4_bytes());
+            if (connection_)
+                connection_->adu.watch(address, poll_time);
+        }
+        socket.send(&out, 1);
+        return true;
+
+    case msg_send:
+        {
+            transaction_type tx;
+            bc::satoshi_load(serial.iterator(), data + size, tx);
+            if (connection_)
+                connection_->txu.send(tx);
+        }
+        socket.send(&out, 1);
+        return true;
+    }
+    socket.send(&out, 1);
+    return false;
+}
+
+void watcher::on_add(const transaction_type& tx)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (cb_)
+        cb_(tx);
+}
+
+void watcher::on_height(size_t height)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (height_cb_)
+        height_cb_(height);
+}
+
+void watcher::on_sent(const std::error_code& error, const transaction_type& tx)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (tx_send_cb_)
+        tx_send_cb_(error, tx);
+}
+
+watcher::connection::~connection()
+{
+}
+
+watcher::connection::connection(tx_db& db, void *ctx, tx_updater::send_handler&& on_send)
+  : socket(ctx),
+    codec(socket),
+    txu(db, codec, std::move(on_send)),
+    adu(txu, codec)
+{
 }
 
 } // libwallet
