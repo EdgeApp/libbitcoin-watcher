@@ -614,8 +614,6 @@ void watcher::got_tx(const transaction_type& tx,
     std::lock_guard<std::recursive_mutex> m(mutex_);
     request_done_ = true;
 
-    mark_outputs_pending(tx, false);
-
     // Update our state with the new info:
     insert_tx(tx, parent_txid);
 }
