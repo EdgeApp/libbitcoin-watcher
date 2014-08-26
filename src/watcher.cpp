@@ -17,6 +17,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 #include <bitcoin/watcher/watcher.hpp>
+#include <bitcoin/constants.hpp>
 
 #include <unistd.h>
 #include <iostream>
@@ -598,7 +599,8 @@ void watcher::history_fetched(const payment_address& address,
         std::string id = utxo_to_id(output.output);
 
         // Update output database
-        if (row.spend_height > 0)
+        std::cout << "Spend Height: " << id << " " << row.spend_height << std::endl;
+        if (row.spend_height > 0 && row.spend_height != bc::max_height)
             output_pending_[id] = false;
         addresses_[address].outputs[id] = output;
     }
@@ -625,6 +627,12 @@ void watcher::mark_outputs_pending(const transaction_type& tx, bool pending)
         std::string id = utxo_to_id(t.previous_output);
         output_pending_[id] = pending;
     }
+
+    for (auto row : output_pending_)
+    {
+        std::cout << "mark_outputs_pending Pending: " << row.first << " " << row.second << std::endl;
+    }
+
 }
 
 void watcher::sent_tx(const transaction_type& tx)
