@@ -223,30 +223,36 @@ void tx_db::dump()
 
 void tx_db::at_height(size_t height)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        last_height_ = height;
 
-    last_height_ = height;
+        // Check for blockchain forks:
+        check_fork(height);
+    }
     on_height_(last_height_);
-
-    // Check for blockchain forks:
-    check_fork(height);
 }
 
 bc::hash_digest tx_db::insert(const bc::transaction_type& tx, tx_state state)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-
     // Calculate the hash:
     bc::data_chunk data(satoshi_raw_size(tx));
     auto it = satoshi_save(tx, data.begin());
     BITCOIN_ASSERT(it == data.end());
     bc::hash_digest tx_hash = bc::bitcoin_hash(data);
 
-    // Do not stomp existing tx's:
-    if (rows_.find(tx_hash) == rows_.end()) {
-        rows_[tx_hash] = tx_row{tx, state, 0, false};
-        on_add_(tx);
+    bool need_callback = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        // Do not stomp existing tx's:
+        if (rows_.find(tx_hash) == rows_.end()) {
+            rows_[tx_hash] = tx_row{tx, state, 0, false};
+            need_callback = true;
+        }
     }
+    if (need_callback)
+        on_add_(tx);
 
     return tx_hash;
 }
