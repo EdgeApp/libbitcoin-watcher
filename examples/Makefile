@@ -3,17 +3,14 @@ LIBS += $(shell pkg-config --libs libbitcoin-watcher)
 
 default: all
 
+all: watcher
+
 .cpp.o:
 	$(CXX) -o $@ -c $< $(CXXFLAGS)
 
 watcher: watcher.o
 	$(CXX) $(LDFLAGS) -o $@ $< $(LIBS)
 
-picker: picker.o
-	$(CXX) $(LDFLAGS) -o $@ $< $(LIBS)
-
-all: picker watcher
-
 clean:
-	rm -f picker watcher
+	rm -f watcher
 	rm -f *.o

@@ -4,7 +4,6 @@ lib_LTLIBRARIES = libbitcoin-watcher.la
 AM_CPPFLAGS = -I$(srcdir)/../include $(libbitcoin_CFLAGS)
 libbitcoin_watcher_la_SOURCES = \
     address_updater.cpp \
-    picker.cpp \
     watcher.cpp \
     tx_db.cpp \
     tx_updater.cpp
