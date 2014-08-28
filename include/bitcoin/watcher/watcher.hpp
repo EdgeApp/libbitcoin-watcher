@@ -143,7 +143,7 @@ private:
     };
     connection* connection_;
 
-    bool command(uint8_t* data, size_t size, zmq::socket_t& socket);
+    bool command(uint8_t* data, size_t size);
     void on_add(const transaction_type& tx);
     void on_height(size_t height);
     void on_sent(const std::error_code& error, const transaction_type& tx);

@@ -49,7 +49,7 @@ BC_API watcher::~watcher()
 BC_API watcher::watcher()
   : db_(std::bind(&watcher::on_add, this, _1),
         std::bind(&watcher::on_height, this, _1)),
-    socket_(ctx_, ZMQ_REQ),
+    socket_(ctx_, ZMQ_PAIR),
     connection_(nullptr)
 {
     std::stringstream name;
@@ -197,13 +197,11 @@ BC_API void watcher::stop()
 
     uint8_t req = msg_quit;
     socket_.send(&req, 1);
-
-    // No recv here
 }
 
 BC_API void watcher::loop()
 {
-    zmq::socket_t socket(ctx_, ZMQ_REP);
+    zmq::socket_t socket(ctx_, ZMQ_PAIR);
     socket.connect(socket_name_.c_str());
     int linger = 0;
     socket.setsockopt(ZMQ_LINGER, &linger, sizeof(linger));
@@ -235,7 +233,7 @@ BC_API void watcher::loop()
         {
             zmq::message_t msg;
             socket.recv(&msg);
-            if (!command(static_cast<uint8_t*>(msg.data()), msg.size(), socket))
+            if (!command(static_cast<uint8_t*>(msg.data()), msg.size()))
                 done = true;
         }
     }
@@ -248,46 +246,37 @@ void watcher::send_disconnect()
 
     uint8_t req = msg_disconnect;
     socket_.send(&req, 1);
-
-    zmq::message_t msg;
-    socket_.recv(&msg);
 }
 
 void watcher::send_connect(std::string server)
 {
     std::lock_guard<std::mutex> lock(socket_mutex_);
-    std::basic_ostringstream<uint8_t> stream;
 
+    std::basic_ostringstream<uint8_t> stream;
     auto serial = bc::make_serializer(std::ostreambuf_iterator<uint8_t>(stream));
     serial.write_byte(msg_connect);
     serial.write_data(server);
     auto str = stream.str();
     socket_.send(str.data(), str.size());
-
-    zmq::message_t msg;
-    socket_.recv(&msg);
 }
 
 void watcher::send_watch_tx(hash_digest tx_hash)
 {
     std::lock_guard<std::mutex> lock(socket_mutex_);
-    std::basic_ostringstream<uint8_t> stream;
 
+    std::basic_ostringstream<uint8_t> stream;
     auto serial = bc::make_serializer(std::ostreambuf_iterator<uint8_t>(stream));
     serial.write_byte(msg_watch_tx);
     serial.write_hash(tx_hash);
     auto str = stream.str();
     socket_.send(str.data(), str.size());
-
-    zmq::message_t msg;
-    socket_.recv(&msg);
 }
 
 void watcher::send_watch_addr(payment_address address, unsigned poll_ms)
 {
     std::lock_guard<std::mutex> lock(socket_mutex_);
-    std::basic_ostringstream<uint8_t> stream;
 
+    std::basic_ostringstream<uint8_t> stream;
     auto serial = bc::make_serializer(std::ostreambuf_iterator<uint8_t>(stream));
     serial.write_byte(msg_watch_addr);
     serial.write_byte(address.version());
@@ -295,9 +284,6 @@ void watcher::send_watch_addr(payment_address address, unsigned poll_ms)
     serial.write_4_bytes(poll_ms);
     auto str = stream.str();
     socket_.send(str.data(), str.size());
-
-    zmq::message_t msg;
-    socket_.recv(&msg);
 }
 
 void watcher::send_send(const transaction_type& tx)
@@ -310,17 +296,14 @@ void watcher::send_send(const transaction_type& tx)
     serial.set_iterator(satoshi_save(tx, serial.iterator()));
     auto str = stream.str();
     socket_.send(str.data(), str.size());
-
-    zmq::message_t msg;
-    socket_.recv(&msg);
 }
 
-bool watcher::command(uint8_t* data, size_t size, zmq::socket_t& socket)
+bool watcher::command(uint8_t* data, size_t size)
 {
-    uint8_t out = 1;
     auto serial = bc::make_deserializer(data, data + size);
     switch (serial.read_byte())
     {
+    default:
     case msg_quit:
         delete connection_;
         connection_ = nullptr;
@@ -329,7 +312,6 @@ bool watcher::command(uint8_t* data, size_t size, zmq::socket_t& socket)
     case msg_disconnect:
         delete connection_;
         connection_ = nullptr;
-        socket.send(&out, 1);
         return true;
 
     case msg_connect:
@@ -342,11 +324,9 @@ bool watcher::command(uint8_t* data, size_t size, zmq::socket_t& socket)
             {
                 delete connection_;
                 connection_ = nullptr;
-                out = 0;
             }
             connection_->txu.start();
         }
-        socket.send(&out, 1);
         return true;
 
     case msg_watch_tx:
@@ -355,7 +335,6 @@ bool watcher::command(uint8_t* data, size_t size, zmq::socket_t& socket)
             if (connection_)
                 connection_->txu.watch(tx_hash);
         }
-        socket.send(&out, 1);
         return true;
 
     case msg_watch_addr:
@@ -367,7 +346,6 @@ bool watcher::command(uint8_t* data, size_t size, zmq::socket_t& socket)
             if (connection_)
                 connection_->adu.watch(address, poll_time);
         }
-        socket.send(&out, 1);
         return true;
 
     case msg_send:
@@ -377,11 +355,8 @@ bool watcher::command(uint8_t* data, size_t size, zmq::socket_t& socket)
             if (connection_)
                 connection_->txu.send(tx);
         }
-        socket.send(&out, 1);
         return true;
     }
-    socket.send(&out, 1);
-    return false;
 }
 
 void watcher::on_add(const transaction_type& tx)
