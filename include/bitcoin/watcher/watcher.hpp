@@ -48,7 +48,7 @@ public:
     BC_API bool load(const data_chunk& data);
 
     // - Addresses: --------------------
-    BC_API void watch_address(const payment_address& address, unsigned poll_ms=0);
+    BC_API void watch_address(const payment_address& address, unsigned poll_ms=10000);
     BC_API void prioritize_address(const payment_address& address);
 
     // - Transactions: -----------------
