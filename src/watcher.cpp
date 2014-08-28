@@ -131,28 +131,28 @@ BC_API transaction_type watcher::find_tx(hash_digest txid)
  * Sets up the new-transaction callback. This callback will be called from
  * some random thread, so be sure to handle that with a mutex or such.
  */
-BC_API void watcher::set_callback(callback& cb)
+BC_API void watcher::set_callback(callback&& cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    cb_ = cb;
+    cb_ = std::move(cb);
 }
 
 /**
  * Sets up the change in block heightcallback.
  */
-BC_API void watcher::set_height_callback(block_height_callback& cb)
+BC_API void watcher::set_height_callback(block_height_callback&& cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    height_cb_ = cb;
+    height_cb_ = std::move(cb);
 }
 
 /**
  * Sets up the tx sent callback
  */
-BC_API void watcher::set_tx_sent_callback(tx_sent_callback& cb)
+BC_API void watcher::set_tx_sent_callback(tx_sent_callback&& cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    tx_send_cb_ = cb;
+    tx_send_cb_ = std::move(cb);
 }
 
 /**

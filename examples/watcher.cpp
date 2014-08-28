@@ -5,6 +5,8 @@
 #include <thread>
 #include <bitcoin/watcher/watcher.hpp>
 
+using std::placeholders::_1;
+
 /**
  * Command-line interface to the wallet watcher service.
  */
@@ -54,11 +56,7 @@ cli::cli()
     looper_([this](){ loop(); }),
     done_(false)
 {
-    libwallet::watcher::callback cb =
-        [this](const libbitcoin::transaction_type& tx)
-        {
-            callback(tx);
-        };
+    auto cb = std::bind(&cli::callback, this, _1);
     watcher.set_callback(cb);
 }
 
