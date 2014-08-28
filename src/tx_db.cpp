@@ -34,7 +34,8 @@ BC_API tx_db::~tx_db()
 
 BC_API tx_db::tx_db(add_handler&& on_add, height_handler&& on_height)
   : on_add_(std::move(on_add)),
-    on_height_(std::move(on_height))
+    on_height_(std::move(on_height)),
+    last_height_(0)
 {
 }
 
