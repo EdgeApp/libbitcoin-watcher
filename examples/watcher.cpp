@@ -6,6 +6,7 @@
 #include <bitcoin/watcher/watcher.hpp>
 
 using std::placeholders::_1;
+using std::placeholders::_2;
 
 /**
  * Command-line interface to the wallet watcher service.
@@ -28,6 +29,8 @@ private:
     void cmd_status();
     void cmd_tx_height(std::stringstream& args);
     void cmd_tx_watch(std::stringstream& args);
+    void cmd_tx_dump(std::stringstream& args);
+    void cmd_tx_send(std::stringstream& args);
     void cmd_prioritize(std::stringstream& args);
     void cmd_utxos(std::stringstream& args);
     void cmd_save(std::stringstream& args);
@@ -37,6 +40,7 @@ private:
     void loop();
 
     void callback(const libbitcoin::transaction_type& tx);
+    void send_callback(std::error_code error, const bc::transaction_type& tx);
 
     bc::hash_digest read_txid(std::stringstream& args);
     bool read_address(std::stringstream& args, bc::payment_address& out);
@@ -58,6 +62,9 @@ cli::cli()
 {
     auto cb = std::bind(&cli::callback, this, _1);
     watcher.set_callback(cb);
+
+    auto send_cb = std::bind(&cli::send_callback, this, _1, _2);
+    watcher.set_tx_sent_callback(send_cb);
 }
 
 int cli::run()
@@ -85,6 +92,8 @@ int cli::run()
         else if (command == "watch")        cmd_watch(reader);
         else if (command == "txheight")     cmd_tx_height(reader);
         else if (command == "txwatch")      cmd_tx_watch(reader);
+        else if (command == "txdump")       cmd_tx_dump(reader);
+        else if (command == "txsend")       cmd_tx_send(reader);
         else if (command == "prioritize")   cmd_prioritize(reader);
         else if (command == "utxos")        cmd_utxos(reader);
         else if (command == "save")         cmd_save(reader);
@@ -116,6 +125,8 @@ void cli::cmd_help()
     std::cout << "  watch <address> [poll ms] - watch an address" << std::endl;
     std::cout << "  txheight <hash>   - get a transaction's height" << std::endl;
     std::cout << "  txwatch <hash>    - manually watch a specific transaction" << std::endl;
+    std::cout << "  txdump <hash>     - show the contents of a transaction" << std::endl;
+    std::cout << "  txsend <hash>     - push a transaction to the server" << std::endl;
     std::cout << "  prioritize [<address>] - check an address more frequently" << std::endl;
     std::cout << "  utxos <address>   - get utxos for an address" << std::endl;
     std::cout << "  save <filename>   - dump the database to disk" << std::endl;
@@ -178,6 +189,38 @@ void cli::cmd_tx_watch(std::stringstream& args)
     if (txid == bc::null_hash)
         return;
     watcher.watch_tx_mem(txid);
+}
+
+void cli::cmd_tx_dump(std::stringstream& args)
+{
+    bc::hash_digest txid = read_txid(args);
+    if (txid == bc::null_hash)
+        return;
+    bc::transaction_type tx = watcher.find_tx(txid);
+
+    std::basic_ostringstream<uint8_t> stream;
+    auto serial = bc::make_serializer(std::ostreambuf_iterator<uint8_t>(stream));
+    serial.set_iterator(satoshi_save(tx, serial.iterator()));
+    auto str = stream.str();
+    std::cout << bc::encode_hex(str) << std::endl;
+}
+
+void cli::cmd_tx_send(std::stringstream& args)
+{
+    std::string arg;
+    args >> arg;
+    bc::data_chunk data = bc::decode_hex(arg);
+    bc::transaction_type tx;
+    try
+    {
+        bc::satoshi_load(data.begin(), data.end(), tx);
+    }
+    catch (bc::end_of_stream)
+    {
+        std::cout << "not a valid transaction" << std::endl;
+        return;
+    }
+    watcher.send_tx(tx);
 }
 
 void cli::cmd_watch(std::stringstream& args)
@@ -272,6 +315,14 @@ void cli::callback(const libbitcoin::transaction_type& tx)
 {
     auto txid = libbitcoin::encode_hex(libbitcoin::hash_transaction(tx));
     std::cout << "got transaction " << txid << std::endl;
+}
+
+void cli::send_callback(std::error_code error, const bc::transaction_type& tx)
+{
+    if (error)
+        std::cout << "failed to send transaction" << std::endl;
+    else
+        std::cout << "sent transaction" << std::endl;
 }
 
 bc::hash_digest cli::read_txid(std::stringstream& args)
