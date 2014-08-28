@@ -133,7 +133,7 @@ BC_API transaction_type watcher::find_tx(hash_digest txid)
  */
 BC_API void watcher::set_callback(callback&& cb)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(cb_mutex_);
     cb_ = std::move(cb);
 }
 
@@ -142,7 +142,7 @@ BC_API void watcher::set_callback(callback&& cb)
  */
 BC_API void watcher::set_height_callback(block_height_callback&& cb)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(cb_mutex_);
     height_cb_ = std::move(cb);
 }
 
@@ -151,7 +151,7 @@ BC_API void watcher::set_height_callback(block_height_callback&& cb)
  */
 BC_API void watcher::set_tx_sent_callback(tx_sent_callback&& cb)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(cb_mutex_);
     tx_send_cb_ = std::move(cb);
 }
 
@@ -193,8 +193,11 @@ void watcher::dump()
 
 BC_API void watcher::stop()
 {
+    std::lock_guard<std::mutex> lock(socket_mutex_);
+
     uint8_t req = msg_quit;
     socket_.send(&req, 1);
+
     // No recv here
 }
 
@@ -241,39 +244,50 @@ BC_API void watcher::loop()
 
 void watcher::send_disconnect()
 {
+    std::lock_guard<std::mutex> lock(socket_mutex_);
+
     uint8_t req = msg_disconnect;
     socket_.send(&req, 1);
+
     zmq::message_t msg;
     socket_.recv(&msg);
 }
 
 void watcher::send_connect(std::string server)
 {
+    std::lock_guard<std::mutex> lock(socket_mutex_);
     std::basic_ostringstream<uint8_t> stream;
+
     auto serial = bc::make_serializer(std::ostreambuf_iterator<uint8_t>(stream));
     serial.write_byte(msg_connect);
     serial.write_data(server);
     auto str = stream.str();
     socket_.send(str.data(), str.size());
+
     zmq::message_t msg;
     socket_.recv(&msg);
 }
 
 void watcher::send_watch_tx(hash_digest tx_hash)
 {
+    std::lock_guard<std::mutex> lock(socket_mutex_);
     std::basic_ostringstream<uint8_t> stream;
+
     auto serial = bc::make_serializer(std::ostreambuf_iterator<uint8_t>(stream));
     serial.write_byte(msg_watch_tx);
     serial.write_hash(tx_hash);
     auto str = stream.str();
     socket_.send(str.data(), str.size());
+
     zmq::message_t msg;
     socket_.recv(&msg);
 }
 
 void watcher::send_watch_addr(payment_address address, unsigned poll_ms)
 {
+    std::lock_guard<std::mutex> lock(socket_mutex_);
     std::basic_ostringstream<uint8_t> stream;
+
     auto serial = bc::make_serializer(std::ostreambuf_iterator<uint8_t>(stream));
     serial.write_byte(msg_watch_addr);
     serial.write_byte(address.version());
@@ -281,18 +295,22 @@ void watcher::send_watch_addr(payment_address address, unsigned poll_ms)
     serial.write_4_bytes(poll_ms);
     auto str = stream.str();
     socket_.send(str.data(), str.size());
+
     zmq::message_t msg;
     socket_.recv(&msg);
 }
 
 void watcher::send_send(const transaction_type& tx)
 {
+    std::lock_guard<std::mutex> lock(socket_mutex_);
+
     std::basic_ostringstream<uint8_t> stream;
     auto serial = bc::make_serializer(std::ostreambuf_iterator<uint8_t>(stream));
     serial.write_byte(msg_send);
     serial.set_iterator(satoshi_save(tx, serial.iterator()));
     auto str = stream.str();
     socket_.send(str.data(), str.size());
+
     zmq::message_t msg;
     socket_.recv(&msg);
 }
@@ -368,21 +386,21 @@ bool watcher::command(uint8_t* data, size_t size, zmq::socket_t& socket)
 
 void watcher::on_add(const transaction_type& tx)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(cb_mutex_);
     if (cb_)
         cb_(tx);
 }
 
 void watcher::on_height(size_t height)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(cb_mutex_);
     if (height_cb_)
         height_cb_(height);
 }
 
 void watcher::on_sent(const std::error_code& error, const transaction_type& tx)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(cb_mutex_);
     if (tx_send_cb_)
         tx_send_cb_(error, tx);
 }

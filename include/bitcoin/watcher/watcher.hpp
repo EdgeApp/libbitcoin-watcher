@@ -111,6 +111,7 @@ private:
     bc::payment_address priority_address_;
 
     // Socket for talking to the thread:
+    std::mutex socket_mutex_;
     std::string socket_name_;
     zmq::socket_t socket_;
 
@@ -122,7 +123,7 @@ private:
     void send_send(const transaction_type& tx);
 
     // The thread uses these callbacks, so put them in a mutex:
-    std::mutex mutex_;
+    std::mutex cb_mutex_;
     callback cb_;
     block_height_callback height_cb_;
     tx_sent_callback tx_send_cb_;
