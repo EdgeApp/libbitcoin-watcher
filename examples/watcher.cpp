@@ -80,9 +80,9 @@ int cli::run()
         else if (command == "help")         cmd_help();
         else if (command == "connect")      cmd_connect(reader);
         else if (command == "disconnect")   cmd_disconnect(reader);
-        else if (command == "watch")        cmd_watch(reader);
         else if (command == "height")       cmd_height();
         else if (command == "status")       cmd_status();
+        else if (command == "watch")        cmd_watch(reader);
         else if (command == "txheight")     cmd_tx_height(reader);
         else if (command == "txwatch")      cmd_tx_watch(reader);
         else if (command == "prioritize")   cmd_prioritize(reader);
@@ -111,7 +111,11 @@ void cli::cmd_help()
     std::cout << "  help              - this menu" << std::endl;
     std::cout << "  connect <server>  - connect to obelisk server" << std::endl;
     std::cout << "  disconnect        - stop talking to the obelisk server" << std::endl;
+    std::cout << "  height            - get the current blockchain height" << std::endl;
+    std::cout << "  status            - get the watcher state" << std::endl;
     std::cout << "  watch <address> [poll ms] - watch an address" << std::endl;
+    std::cout << "  txheight <hash>   - get a transaction's height" << std::endl;
+    std::cout << "  txwatch <hash>    - manually watch a specific transaction" << std::endl;
     std::cout << "  prioritize [<address>] - check an address more frequently" << std::endl;
     std::cout << "  utxos <address>   - get utxos for an address" << std::endl;
     std::cout << "  save <filename>   - dump the database to disk" << std::endl;
