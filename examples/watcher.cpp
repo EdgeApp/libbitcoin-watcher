@@ -113,7 +113,7 @@ void cli::cmd_help()
     std::cout << "  help              - this menu" << std::endl;
     std::cout << "  connect <server>  - connect to obelisk server" << std::endl;
     std::cout << "  disconnect        - stop talking to the obelisk server" << std::endl;
-    std::cout << "  watch <address>   - watch an address" << std::endl;
+    std::cout << "  watch <address> [poll ms] - watch an address" << std::endl;
     std::cout << "  prioritize [<address>] - check an address more frequently" << std::endl;
     std::cout << "  utxos <address>   - get utxos for an address" << std::endl;
     std::cout << "  save <filename>   - dump the database to disk" << std::endl;
@@ -183,7 +183,14 @@ void cli::cmd_watch(std::stringstream& args)
     bc::payment_address address;
     if (!read_address(args, address))
         return;
-    watcher.watch_address(address);
+    unsigned poll_ms = 10000;
+    args >> poll_ms;
+    if (poll_ms < 500)
+    {
+        std::cout << "warning: poll too short, setting to 500ms" << std::endl;
+        poll_ms = 500;
+    }
+    watcher.watch_address(address, poll_ms);
 }
 
 void cli::cmd_prioritize(std::stringstream& args)

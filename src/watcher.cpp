@@ -74,7 +74,7 @@ BC_API void watcher::connect(const std::string& server)
 {
     send_connect(server);
     for (auto& address: addresses_)
-        send_watch_addr(address, default_poll);
+        send_watch_addr(address.first, address.second);
     if (is_valid(priority_address_))
         send_watch_addr(priority_address_, priority_poll);
 }
@@ -97,10 +97,10 @@ BC_API bool watcher::load(const data_chunk& data)
     return db_.load(data);
 }
 
-BC_API void watcher::watch_address(const payment_address& address)
+BC_API void watcher::watch_address(const payment_address& address, unsigned poll_ms)
 {
-    addresses_.insert(address);
-    send_watch_addr(address, default_poll);
+    addresses_[address] = poll_ms;
+    send_watch_addr(address, poll_ms);
 }
 
 BC_API void watcher::watch_tx_mem(const hash_digest& txid)

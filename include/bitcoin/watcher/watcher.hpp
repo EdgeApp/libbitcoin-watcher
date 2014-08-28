@@ -20,7 +20,7 @@
 #define LIBBITCOIN_WATCHER_WATCHER_HPP
 
 #include <bitcoin/watcher/address_updater.hpp>
-#include <unordered_set>
+#include <unordered_map>
 #include <bitcoin/client.hpp>
 #include <zmq.hpp>
 
@@ -48,7 +48,7 @@ public:
     BC_API bool load(const data_chunk& data);
 
     // - Addresses: --------------------
-    BC_API void watch_address(const payment_address& address);
+    BC_API void watch_address(const payment_address& address, unsigned poll_ms=0);
     BC_API void prioritize_address(const payment_address& address);
 
     // - Transactions: -----------------
@@ -107,7 +107,7 @@ private:
     zmq::context_t ctx_;
 
     // Cached addresses, for when we are disconnected:
-    std::unordered_set<bc::payment_address> addresses_;
+    std::unordered_map<bc::payment_address, unsigned> addresses_;
     bc::payment_address priority_address_;
 
     // Socket for talking to the thread:
