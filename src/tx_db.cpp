@@ -289,15 +289,17 @@ void tx_db::unconfirmed(bc::hash_digest tx_hash)
     auto i = rows_.find(tx_hash);
     if (i == rows_.end())
         return;
-    auto row = i->second;
+    auto& row = i->second;
 
+    // If the transaction was already confirmed, and is now unconfirmed,
+    // we probably have a block fork:
     if (row.state == tx_state::confirmed)
     {
         //on_fork_();
         check_fork(row.block_height);
     }
 
-    row.need_check = true;
+    row.state = tx_state::unconfirmed;
 }
 
 void tx_db::forget(bc::hash_digest tx_hash)
@@ -312,7 +314,7 @@ void tx_db::foreach_unconfirmed(hash_fn&& f)
     std::lock_guard<std::mutex> lock(mutex_);
 
     for (auto row: rows_)
-        if (row.second.state == tx_state::unconfirmed)
+        if (row.second.state != tx_state::confirmed)
             f(row.first);
 }
 
