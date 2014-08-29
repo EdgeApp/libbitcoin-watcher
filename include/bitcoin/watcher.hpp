@@ -31,7 +31,6 @@
 
 // Convenience header that includes everything
 // Not to be used internally. For API users.
-#include <bitcoin/watcher/picker.hpp>
 #include <bitcoin/watcher/watcher.hpp>
 
 #endif
