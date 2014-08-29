@@ -54,8 +54,8 @@ void tx_updater::watch(bc::hash_digest tx_hash)
 
 void tx_updater::send(bc::transaction_type tx)
 {
-    auto hash = db_.insert(tx, tx_state::unsent);
-    send_tx(hash);
+    db_.insert(tx, tx_state::unsent);
+    send_tx(tx);
 }
 
 std::chrono::milliseconds tx_updater::wakeup()
@@ -191,23 +191,27 @@ void tx_updater::get_index(bc::hash_digest tx_hash)
     codec_.fetch_transaction_index(on_error, on_done, tx_hash);
 }
 
-void tx_updater::send_tx(bc::hash_digest tx_hash)
+void tx_updater::send_tx(const bc::transaction_type& tx)
 {
-    auto on_error = [this, tx_hash](const std::error_code& error)
+    auto on_error = [this, tx](const std::error_code& error)
     {
+        std::cout << "tx_updater::send_tx error" << std::endl;
+
         //server_fail(error);
-        db_.forget(tx_hash);
-        on_send_(error, db_.get_tx(tx_hash));
+        db_.forget(tx_db::hash_tx(tx));
+        on_send_(error, tx);
     };
 
-    auto on_done = [this, tx_hash]()
+    auto on_done = [this, tx]()
     {
+        std::cout << "tx_updater::send_tx done" << std::endl;
+
         std::error_code error;
-        db_.unconfirmed(tx_hash);
-        on_send_(error, db_.get_tx(tx_hash));
+        db_.unconfirmed(tx_db::hash_tx(tx));
+        on_send_(error, tx);
     };
 
-    codec_.broadcast_transaction(on_error, on_done, db_.get_tx(tx_hash));
+    codec_.broadcast_transaction(on_error, on_done, tx);
 }
 
 } // namespace libwallet

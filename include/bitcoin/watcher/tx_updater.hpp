@@ -57,7 +57,7 @@ private:
     void get_tx(bc::hash_digest tx_hash);
     void get_tx_mem(bc::hash_digest tx_hash);
     void get_index(bc::hash_digest tx_hash);
-    void send_tx(bc::hash_digest tx_hash);
+    void send_tx(const bc::transaction_type& tx);
 
     tx_db& db_;
     bc::client::obelisk_codec& codec_;

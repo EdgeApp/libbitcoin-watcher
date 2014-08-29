@@ -109,6 +109,11 @@ private:
     friend class tx_updater;
 
     /**
+     * Computes a transaction's hash.
+     */
+    static bc::hash_digest hash_tx(const bc::transaction_type &tx);
+
+    /**
      * Updates the block height.
      */
     BC_API void at_height(size_t height);
@@ -138,9 +143,11 @@ private:
     BC_API void forget(bc::hash_digest tx_hash);
 
     typedef std::function<void (bc::hash_digest tx_hash)> hash_fn;
-    BC_API void foreach_unsent(hash_fn&& f);
     BC_API void foreach_unconfirmed(hash_fn&& f);
     BC_API void foreach_forked(hash_fn&& f);
+
+    typedef std::function<void (const bc::transaction_type& tx)> tx_fn;
+    BC_API void foreach_unsent(tx_fn&& f);
 
     // - Internal: ---------------------
     void check_fork(size_t height);

@@ -222,6 +222,14 @@ void tx_db::dump()
     }
 }
 
+bc::hash_digest tx_db::hash_tx(const bc::transaction_type &tx)
+{
+    bc::data_chunk data(satoshi_raw_size(tx));
+    auto it = satoshi_save(tx, data.begin());
+    BITCOIN_ASSERT(it == data.end());
+    return bc::bitcoin_hash(data);
+}
+
 void tx_db::at_height(size_t height)
 {
     {
@@ -236,11 +244,7 @@ void tx_db::at_height(size_t height)
 
 bc::hash_digest tx_db::insert(const bc::transaction_type& tx, tx_state state)
 {
-    // Calculate the hash:
-    bc::data_chunk data(satoshi_raw_size(tx));
-    auto it = satoshi_save(tx, data.begin());
-    BITCOIN_ASSERT(it == data.end());
-    bc::hash_digest tx_hash = bc::bitcoin_hash(data);
+    auto tx_hash = hash_tx(tx);
 
     bool need_callback = false;
     {
@@ -303,15 +307,6 @@ void tx_db::forget(bc::hash_digest tx_hash)
     rows_.erase(tx_hash);
 }
 
-void tx_db::foreach_unsent(hash_fn&& f)
-{
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    for (auto row: rows_)
-        if (row.second.state == tx_state::unsent)
-            f(row.first);
-}
-
 void tx_db::foreach_unconfirmed(hash_fn&& f)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -328,6 +323,15 @@ void tx_db::foreach_forked(hash_fn&& f)
     for (auto row: rows_)
         if (row.second.state == tx_state::confirmed && row.second.need_check)
             f(row.first);
+}
+
+void tx_db::foreach_unsent(tx_fn&& f)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    for (auto row: rows_)
+        if (row.second.state == tx_state::unsent)
+            f(row.second.tx);
 }
 
 /**
