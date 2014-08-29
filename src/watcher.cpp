@@ -324,6 +324,7 @@ bool watcher::command(uint8_t* data, size_t size)
             {
                 delete connection_;
                 connection_ = nullptr;
+                return true;
             }
             connection_->txu.start();
         }
