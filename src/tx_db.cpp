@@ -104,6 +104,29 @@ bc::output_info_list tx_db::get_utxos(const bc::payment_address& address)
     return out;
 }
 
+bc::output_info_list tx_db::get_utxos()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    // This is an O(n^2) algorithm!
+    bc::output_info_list out;
+    for (auto& row: rows_)
+    {
+        // Check each output:
+        for (uint32_t i = 0; i < row.second.tx.outputs.size(); ++i)
+        {
+            auto& output = row.second.tx.outputs[i];
+            bc::output_point point = {row.first, i};
+            if (is_unspent(point))
+            {
+                bc::output_info_type info = {point, output.value};
+                out.push_back(info);
+            }
+        }
+    }
+    return out;
+}
+
 size_t tx_db::count_unconfirmed()
 {
     std::lock_guard<std::mutex> lock(mutex_);

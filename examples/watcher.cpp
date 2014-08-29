@@ -127,8 +127,8 @@ void cli::cmd_help()
     std::cout << "  txwatch <hash>    - manually watch a specific transaction" << std::endl;
     std::cout << "  txdump <hash>     - show the contents of a transaction" << std::endl;
     std::cout << "  txsend <hash>     - push a transaction to the server" << std::endl;
-    std::cout << "  prioritize [<address>] - check an address more frequently" << std::endl;
-    std::cout << "  utxos <address>   - get utxos for an address" << std::endl;
+    std::cout << "  prioritize [address] - check an address more frequently" << std::endl;
+    std::cout << "  utxos [address]   - get utxos for an address" << std::endl;
     std::cout << "  save <filename>   - dump the database to disk" << std::endl;
     std::cout << "  load <filename>   - load the database from disk" << std::endl;
     std::cout << "  dump              - display the database contents" << std::endl;
@@ -250,14 +250,30 @@ void cli::cmd_prioritize(std::stringstream& args)
 
 void cli::cmd_utxos(std::stringstream& args)
 {
+    bc::output_info_list utxos;
     bc::payment_address address;
-    if (!read_address(args, address))
-        return;
+    std::string arg;
+    args >> arg;
+    if (arg.size() && address.set_encoded(arg))
+        utxos = watcher.get_utxos(address);
+    else
+        utxos = watcher.get_utxos();
 
-    auto list = watcher.get_utxos(address);
-    for (auto& utxo: list)
+    size_t total = 0;
+
+    for (auto& utxo: utxos)
+    {
         std::cout << bc::encode_hex(utxo.point.hash) << ":" <<
             utxo.point.index << std::endl;
+        auto tx = watcher.find_tx(utxo.point.hash);
+        auto& output = tx.outputs[utxo.point.index];
+        bc::payment_address to_address;
+        if (bc::extract(to_address, output.script))
+            std::cout << "address: " << to_address.encoded() << " ";
+        std::cout << "value: " << output.value << std::endl;
+        total += output.value;
+    }
+    std::cout << "total: " << total << std::endl;
 }
 
 void cli::cmd_save(std::stringstream& args)
