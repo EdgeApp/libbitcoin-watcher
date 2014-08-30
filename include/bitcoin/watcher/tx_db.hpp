@@ -114,11 +114,6 @@ private:
     friend class tx_updater;
 
     /**
-     * Computes a transaction's hash.
-     */
-    static bc::hash_digest hash_tx(const bc::transaction_type &tx);
-
-    /**
      * Updates the block height.
      */
     BC_API void at_height(size_t height);

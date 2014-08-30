@@ -198,7 +198,7 @@ void tx_updater::send_tx(const bc::transaction_type& tx)
         std::cout << "tx_updater::send_tx error" << std::endl;
 
         //server_fail(error);
-        db_.forget(tx_db::hash_tx(tx));
+        db_.forget(bc::hash_transaction(tx));
         on_send_(error, tx);
     };
 
@@ -207,7 +207,7 @@ void tx_updater::send_tx(const bc::transaction_type& tx)
         std::cout << "tx_updater::send_tx done" << std::endl;
 
         std::error_code error;
-        db_.unconfirmed(tx_db::hash_tx(tx));
+        db_.unconfirmed(bc::hash_transaction(tx));
         on_send_(error, tx);
     };
 

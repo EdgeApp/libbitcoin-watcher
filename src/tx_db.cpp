@@ -245,14 +245,6 @@ void tx_db::dump()
     }
 }
 
-bc::hash_digest tx_db::hash_tx(const bc::transaction_type &tx)
-{
-    bc::data_chunk data(satoshi_raw_size(tx));
-    auto it = satoshi_save(tx, data.begin());
-    BITCOIN_ASSERT(it == data.end());
-    return bc::bitcoin_hash(data);
-}
-
 void tx_db::at_height(size_t height)
 {
     {
@@ -267,7 +259,7 @@ void tx_db::at_height(size_t height)
 
 bc::hash_digest tx_db::insert(const bc::transaction_type& tx, tx_state state)
 {
-    auto tx_hash = hash_tx(tx);
+    auto tx_hash = bc::hash_transaction(tx);
 
     bool need_callback = false;
     {
