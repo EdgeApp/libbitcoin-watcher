@@ -120,14 +120,8 @@ void tx_updater::get_tx(bc::hash_digest tx_hash)
     auto on_done = [this, tx_hash](const bc::transaction_type& tx)
     {
         std::cout << "tx_updater::get_tx done" << std::endl;
-
-        auto hash = db_.insert(tx, tx_state::unconfirmed);
-        if (hash != tx_hash)
-        {
-            auto error = std::make_error_code(std::errc::timed_out);
-            server_fail(error);
-            return;
-        }
+        BITCOIN_ASSERT(tx_hash == bc::hash_transaction(tx));
+        db_.insert(tx, tx_state::unconfirmed);
         get_index(tx_hash);
     };
 
@@ -145,14 +139,8 @@ void tx_updater::get_tx_mem(bc::hash_digest tx_hash)
     auto on_done = [this, tx_hash](const bc::transaction_type& tx)
     {
         std::cout << "tx_updater::get_tx_mem done" << std::endl;
-
-        auto hash = db_.insert(tx, tx_state::unconfirmed);
-        if (hash != tx_hash)
-        {
-            auto error = std::make_error_code(std::errc::timed_out);
-            server_fail(error);
-            return;
-        }
+        BITCOIN_ASSERT(tx_hash == bc::hash_transaction(tx));
+        db_.insert(tx, tx_state::unconfirmed);
         get_index(tx_hash);
     };
 

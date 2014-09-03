@@ -312,8 +312,7 @@ void tx_db::unconfirmed(bc::hash_digest tx_hash)
     std::lock_guard<std::mutex> lock(mutex_);
 
     auto i = rows_.find(tx_hash);
-    if (i == rows_.end())
-        return;
+    BITCOIN_ASSERT(i != rows_.end());
     auto& row = i->second;
 
     // If the transaction was already confirmed, and is now unconfirmed,
