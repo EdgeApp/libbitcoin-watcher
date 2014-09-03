@@ -101,7 +101,7 @@ public:
     BC_API void watch_tx_mem(const hash_digest& txid);
 
     // Debugging code:
-    BC_API void dump();
+    BC_API void dump(std::ostream& out=std::cout);
 
 private:
     tx_db db_;

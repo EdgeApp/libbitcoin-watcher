@@ -191,9 +191,9 @@ BC_API int watcher::get_unconfirmed_count()
     return db_.count_unconfirmed();
 }
 
-void watcher::dump()
+void watcher::dump(std::ostream& out)
 {
-    db_.dump();
+    db_.dump(out);
 }
 
 BC_API void watcher::stop()

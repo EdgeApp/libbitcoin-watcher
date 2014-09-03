@@ -18,9 +18,6 @@
  */
 #include <bitcoin/watcher/tx_db.hpp>
 
-#include <iterator>
-#include <iostream>
-
 namespace libwallet {
 
 // Serialization stuff:
@@ -217,30 +214,43 @@ bool tx_db::load(const bc::data_chunk& data)
     return true;
 }
 
-void tx_db::dump()
+void tx_db::dump(std::ostream& out)
 {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    std::cout << "height: " << last_height_ << std::endl;
+    out << "height: " << last_height_ << std::endl;
     for (const auto& row: rows_)
     {
-        std::cout << "================" << std::endl;
-        std::cout << "hash: " << bc::encode_hex(row.first) << std::endl;
+        out << "================" << std::endl;
+        out << "hash: " << bc::encode_hex(row.first) << std::endl;
         std::string state;
         switch (row.second.state)
         {
         case tx_state::unsent:
-            std::cout << "state: unsent" << std::endl;
+            out << "state: unsent" << std::endl;
             break;
         case tx_state::unconfirmed:
-            std::cout << "state: unconfirmed" << std::endl;
+            out << "state: unconfirmed" << std::endl;
             break;
         case tx_state::confirmed:
-            std::cout << "state: confirmed" << std::endl;
-            std::cout << "height: " << row.second.block_height << std::endl;
+            out << "state: confirmed" << std::endl;
+            out << "height: " << row.second.block_height << std::endl;
             if (row.second.need_check)
-                std::cout << "needs check." << std::endl;
+                out << "needs check." << std::endl;
             break;
+        }
+        for (auto& input: row.second.tx.inputs)
+        {
+            bc::payment_address address;
+            if (bc::extract(address, input.script))
+                out << "input: " << address.encoded() << std::endl;
+        }
+        for (auto& output: row.second.tx.outputs)
+        {
+            bc::payment_address address;
+            if (bc::extract(address, output.script))
+                out << "output: " << address.encoded() << " " <<
+                    output.value << std::endl;
         }
     }
 }

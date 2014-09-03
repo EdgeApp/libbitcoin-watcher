@@ -131,7 +131,7 @@ void cli::cmd_help()
     std::cout << "  utxos [address]   - get utxos for an address" << std::endl;
     std::cout << "  save <filename>   - dump the database to disk" << std::endl;
     std::cout << "  load <filename>   - load the database from disk" << std::endl;
-    std::cout << "  dump              - display the database contents" << std::endl;
+    std::cout << "  dump [filename]   - display the database contents" << std::endl;
 }
 
 void cli::cmd_connect(std::stringstream& args)
@@ -319,7 +319,20 @@ void cli::cmd_load(std::stringstream& args)
 
 void cli::cmd_dump(std::stringstream& args)
 {
-    watcher.dump();
+    std::string filename;
+    args >> filename;
+    if (filename.size())
+    {
+        std::ofstream file(filename);
+        if (!file.is_open())
+        {
+            std::cerr << "cannot open " << filename << std::endl;
+            return;
+        }
+        watcher.dump(file);
+    }
+    else
+        watcher.dump(std::cout);
 }
 
 void cli::loop()

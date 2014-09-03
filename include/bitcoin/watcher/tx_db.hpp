@@ -21,6 +21,7 @@
 
 #include <map>
 #include <mutex>
+#include <ostream>
 #include <bitcoin/bitcoin.hpp>
 
 namespace libwallet {
@@ -107,7 +108,7 @@ public:
     /**
      * Debug dump to show db contents.
      */
-    BC_API void dump();
+    BC_API void dump(std::ostream& out);
 
 private:
     // - Updater: ----------------------
