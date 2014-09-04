@@ -75,13 +75,14 @@ public:
     virtual bc::client::sleep_time wakeup();
 
 private:
-    void watch(bc::hash_digest tx_hash);
+    void watch(bc::hash_digest tx_hash, bool want_inputs);
+    void get_inputs(const bc::transaction_type& tx);
     void queue_get_indices();
 
     // Server queries:
     void get_height();
-    void get_tx(bc::hash_digest tx_hash);
-    void get_tx_mem(bc::hash_digest tx_hash);
+    void get_tx(bc::hash_digest tx_hash, bool want_inputs);
+    void get_tx_mem(bc::hash_digest tx_hash, bool want_inputs);
     void get_index(bc::hash_digest tx_hash);
     void send_tx(const bc::transaction_type& tx);
     void query_address(const bc::payment_address& address);

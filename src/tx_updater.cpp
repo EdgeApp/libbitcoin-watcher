@@ -109,10 +109,18 @@ bc::client::sleep_time tx_updater::wakeup()
     return next_wakeup;
 }
 
-void tx_updater::watch(bc::hash_digest tx_hash)
+void tx_updater::watch(bc::hash_digest tx_hash, bool want_inputs)
 {
     if (!db_.has_tx(tx_hash))
-        get_tx(tx_hash);
+        get_tx(tx_hash, want_inputs);
+    else if (want_inputs)
+        get_inputs(db_.get_tx(tx_hash));
+}
+
+void tx_updater::get_inputs(const bc::transaction_type& tx)
+{
+    for (auto& input: tx.inputs)
+        watch(input.previous_output.hash, false);
 }
 
 void tx_updater::queue_get_indices()
@@ -150,29 +158,31 @@ void tx_updater::get_height()
     codec_.fetch_last_height(on_error, on_done);
 }
 
-void tx_updater::get_tx(bc::hash_digest tx_hash)
+void tx_updater::get_tx(bc::hash_digest tx_hash, bool want_inputs)
 {
-    auto on_error = [this, tx_hash](const std::error_code& error)
+    auto on_error = [this, tx_hash, want_inputs](const std::error_code& error)
     {
         std::cout << "tx_updater::get_tx error" << std::endl;
         // A failure means the transaction might be in the mempool:
         (void)error;
-        get_tx_mem(tx_hash);
+        get_tx_mem(tx_hash, want_inputs);
     };
 
-    auto on_done = [this, tx_hash](const bc::transaction_type& tx)
+    auto on_done = [this, tx_hash, want_inputs](const bc::transaction_type& tx)
     {
         std::cout << "tx_updater::get_tx done" << std::endl;
         BITCOIN_ASSERT(tx_hash == bc::hash_transaction(tx));
         if (db_.insert(tx, tx_state::unconfirmed))
             callbacks_.on_add(tx);
+        if (want_inputs)
+            get_inputs(tx);
         get_index(tx_hash);
     };
 
     codec_.fetch_transaction(on_error, on_done, tx_hash);
 }
 
-void tx_updater::get_tx_mem(bc::hash_digest tx_hash)
+void tx_updater::get_tx_mem(bc::hash_digest tx_hash, bool want_inputs)
 {
     auto on_error = [this](const std::error_code& error)
     {
@@ -181,12 +191,14 @@ void tx_updater::get_tx_mem(bc::hash_digest tx_hash)
         failed_ = true;
     };
 
-    auto on_done = [this, tx_hash](const bc::transaction_type& tx)
+    auto on_done = [this, tx_hash, want_inputs](const bc::transaction_type& tx)
     {
         std::cout << "tx_updater::get_tx_mem done" << std::endl;
         BITCOIN_ASSERT(tx_hash == bc::hash_transaction(tx));
         if (db_.insert(tx, tx_state::unconfirmed))
             callbacks_.on_add(tx);
+        if (want_inputs)
+            get_inputs(tx);
         get_index(tx_hash);
     };
 
@@ -262,9 +274,9 @@ void tx_updater::query_address(const bc::payment_address& address)
         std::cout << "address_updater::query_address done" << std::endl;
         for (auto& row: history)
         {
-            watch(row.output.hash);
+            watch(row.output.hash, true);
             if (row.spend.hash != bc::null_hash)
-                watch(row.spend.hash);
+                watch(row.spend.hash, true);
         }
     };
 
