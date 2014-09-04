@@ -142,7 +142,7 @@ private:
     virtual void on_add(const transaction_type& tx);
     virtual void on_height(size_t height);
     virtual void on_send(const std::error_code& error, const transaction_type& tx);
-    virtual void on_fail(const std::error_code& error);
+    virtual void on_fail();
 };
 
 } // namespace libwallet

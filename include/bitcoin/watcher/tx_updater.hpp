@@ -52,7 +52,7 @@ public:
     /**
      * Called when the updater sees an unexpected obelisk server failure.
      */
-    virtual void on_fail(const std::error_code& error) = 0;
+    virtual void on_fail() = 0;
 };
 
 /**
@@ -97,6 +97,7 @@ private:
     };
     std::unordered_map<bc::payment_address, address_row> rows_;
 
+    bool failed_;
     size_t queued_get_indices_;
     std::chrono::steady_clock::time_point last_wakeup_;
 };

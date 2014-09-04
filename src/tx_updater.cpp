@@ -30,6 +30,7 @@ BC_API tx_updater::tx_updater(tx_db& db, bc::client::obelisk_codec& codec,
     tx_callbacks& callbacks)
   : db_(db), codec_(codec),
     callbacks_(callbacks),
+    failed_(false),
     queued_get_indices_(0),
     last_wakeup_(std::chrono::steady_clock::now())
 {
@@ -97,6 +98,14 @@ bc::client::sleep_time tx_updater::wakeup()
         else
             next_wakeup = bc::client::min_sleep(next_wakeup, poll_time - elapsed);
     }
+
+    // Report the last server failure:
+    if (failed_)
+    {
+        callbacks_.on_fail();
+        failed_ = false;
+    }
+
     return next_wakeup;
 }
 
@@ -120,7 +129,8 @@ void tx_updater::get_height()
     auto on_error = [this](const std::error_code& error)
     {
         std::cout << "tx_updater::get_height error" << std::endl;
-        callbacks_.on_fail(error);
+        (void)error;
+        failed_ = true;
     };
 
     auto on_done = [this](size_t height)
@@ -167,7 +177,8 @@ void tx_updater::get_tx_mem(bc::hash_digest tx_hash)
     auto on_error = [this](const std::error_code& error)
     {
         std::cout << "tx_updater::get_tx_mem error" << std::endl;
-        callbacks_.on_fail(error);
+        (void)error;
+        failed_ = true;
     };
 
     auto on_done = [this, tx_hash](const bc::transaction_type& tx)
@@ -242,7 +253,8 @@ void tx_updater::query_address(const bc::payment_address& address)
     auto on_error = [this](const std::error_code& error)
     {
         std::cout << "address_updater::query_address error" << std::endl;
-        callbacks_.on_fail(error);
+        (void)error;
+        failed_ = true;
     };
 
     auto on_done = [this](const bc::blockchain::history_list& history)

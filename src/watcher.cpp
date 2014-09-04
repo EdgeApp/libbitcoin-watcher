@@ -372,9 +372,9 @@ void watcher::on_send(const std::error_code& error, const transaction_type& tx)
         tx_send_cb_(error, tx);
 }
 
-void watcher::on_fail(const std::error_code& error)
+void watcher::on_fail()
 {
-    (void)error;
+    std::lock_guard<std::mutex> lock(cb_mutex_);
     if (fail_cb_)
         fail_cb_();
 }
