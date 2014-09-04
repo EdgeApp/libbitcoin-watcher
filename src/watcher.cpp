@@ -211,6 +211,19 @@ BC_API void watcher::stop()
     socket_.send(&req, 1);
 }
 
+void throw_term()
+{
+    throw 1;
+}
+void throw_fault()
+{
+    throw 2;
+}
+void throw_intr()
+{
+    throw 3;
+}
+
 BC_API void watcher::loop()
 {
     zmq::socket_t socket(ctx_, ZMQ_PAIR);
@@ -237,7 +250,13 @@ BC_API void watcher::loop()
             if (next_wakeup.count())
                 delay = next_wakeup.count();
         }
-        zmq::poll(items.data(), items.size(), delay);
+        if (zmq_poll(items.data(), items.size(), delay) < 0)
+            switch (errno)
+            {
+            case ETERM:  throw_term();  break;
+            case EFAULT: throw_fault(); break;
+            case EINTR:  throw_intr();  break;
+            }
 
         if (connection_ && items[1].revents)
             connection_->socket.forward(connection_->codec);
