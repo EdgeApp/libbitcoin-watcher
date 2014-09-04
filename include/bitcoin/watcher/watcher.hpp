@@ -19,7 +19,7 @@
 #ifndef LIBBITCOIN_WATCHER_WATCHER_HPP
 #define LIBBITCOIN_WATCHER_WATCHER_HPP
 
-#include <bitcoin/watcher/address_updater.hpp>
+#include <bitcoin/watcher/tx_updater.hpp>
 #include <unordered_map>
 #include <bitcoin/client.hpp>
 #include <zmq.hpp>
@@ -133,7 +133,6 @@ private:
         bc::client::zeromq_socket socket;
         bc::client::obelisk_codec codec;
         tx_updater txu;
-        address_updater adu;
     };
     connection* connection_;
 

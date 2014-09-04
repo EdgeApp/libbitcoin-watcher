@@ -228,8 +228,6 @@ BC_API void watcher::loop()
             auto next_wakeup = connection_->codec.wakeup();
             next_wakeup = bc::client::min_sleep(next_wakeup,
                 connection_->txu.wakeup());
-            next_wakeup = bc::client::min_sleep(next_wakeup,
-                connection_->adu.wakeup());
             if (next_wakeup.count())
                 delay = next_wakeup.count();
         }
@@ -336,9 +334,9 @@ bool watcher::command(uint8_t* data, size_t size)
             auto version = serial.read_byte();
             auto hash = serial.read_short_hash();
             payment_address address(version, hash);
-            std::chrono::milliseconds poll_time(serial.read_4_bytes());
+            bc::client::sleep_time poll_time(serial.read_4_bytes());
             if (connection_)
-                connection_->adu.watch(address, poll_time);
+                connection_->txu.watch(address, poll_time);
         }
         return true;
 
@@ -388,8 +386,7 @@ watcher::connection::~connection()
 watcher::connection::connection(tx_db& db, void *ctx, tx_callbacks& cb)
   : socket(ctx),
     codec(socket),
-    txu(db, codec, cb),
-    adu(txu, codec)
+    txu(db, codec, cb)
 {
 }
 

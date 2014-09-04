@@ -47,10 +47,15 @@ void tx_updater::start()
     db_.foreach_unsent(std::bind(&tx_updater::send_tx, this, _1));
 }
 
-void tx_updater::watch(bc::hash_digest tx_hash)
+void tx_updater::watch(const bc::payment_address& address,
+    bc::client::sleep_time poll)
 {
-    if (!db_.has_tx(tx_hash))
-        get_tx(tx_hash);
+     std::cout << "tx_updater::watch " << address.encoded() << " " <<
+        poll.count() << std::endl;
+
+    // Only insert if it isn't already present:
+    rows_[address] = address_row{poll, std::chrono::steady_clock::now()};
+    query_address(address);
 }
 
 void tx_updater::send(bc::transaction_type tx)
@@ -60,20 +65,45 @@ void tx_updater::send(bc::transaction_type tx)
     send_tx(tx);
 }
 
-std::chrono::milliseconds tx_updater::wakeup()
+bc::client::sleep_time tx_updater::wakeup()
 {
-    auto period = std::chrono::seconds(30);
+    bc::client::sleep_time next_wakeup(0);
     auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - last_wakeup_);
 
+    // Figure out when our next block check is:
+    auto period = std::chrono::seconds(30);
+    auto elapsed = std::chrono::duration_cast<bc::client::sleep_time>(
+        now - last_wakeup_);
     if (period <= elapsed)
     {
         get_height();
         last_wakeup_ = now;
-        elapsed = std::chrono::milliseconds::zero();
+        elapsed = bc::client::sleep_time::zero();
     }
-    return period - elapsed;
+    next_wakeup = period - elapsed;
+
+    // Figure out when our next address check should be:
+    for (auto& row: rows_)
+    {
+        auto poll_time = row.second.poll_time;
+        auto elapsed = std::chrono::duration_cast<bc::client::sleep_time>(
+            now - row.second.last_check);
+        if (poll_time <= elapsed)
+        {
+            row.second.last_check = now;
+            next_wakeup = bc::client::min_sleep(next_wakeup, poll_time);
+            query_address(row.first);
+        }
+        else
+            next_wakeup = bc::client::min_sleep(next_wakeup, poll_time - elapsed);
+    }
+    return next_wakeup;
+}
+
+void tx_updater::watch(bc::hash_digest tx_hash)
+{
+    if (!db_.has_tx(tx_hash))
+        get_tx(tx_hash);
 }
 
 void tx_updater::queue_get_indices()
@@ -205,6 +235,28 @@ void tx_updater::send_tx(const bc::transaction_type& tx)
     };
 
     codec_.broadcast_transaction(on_error, on_done, tx);
+}
+
+void tx_updater::query_address(const bc::payment_address& address)
+{
+    auto on_error = [this](const std::error_code& error)
+    {
+        std::cout << "address_updater::query_address error" << std::endl;
+        callbacks_.on_fail(error);
+    };
+
+    auto on_done = [this](const bc::blockchain::history_list& history)
+    {
+        std::cout << "address_updater::query_address done" << std::endl;
+        for (auto& row: history)
+        {
+            watch(row.output.hash);
+            if (row.spend.hash != bc::null_hash)
+                watch(row.spend.hash);
+        }
+    };
+
+    codec_.address_fetch_history(on_error, on_done, address);
 }
 
 } // namespace libwallet

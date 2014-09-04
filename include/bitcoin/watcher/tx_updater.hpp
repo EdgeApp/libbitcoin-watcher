@@ -21,7 +21,7 @@
 
 #include <bitcoin/watcher/tx_db.hpp>
 #include <bitcoin/client.hpp>
-#include <bitcoin/bitcoin.hpp>
+#include <unordered_map>
 
 namespace libwallet {
 
@@ -67,19 +67,15 @@ public:
         tx_callbacks& callbacks);
     void start();
 
-    BC_API void watch(bc::hash_digest tx_hash);
+    BC_API void watch(const bc::payment_address& address,
+        bc::client::sleep_time poll);
     BC_API void send(bc::transaction_type tx);
 
     // Sleeper interface:
-    virtual std::chrono::milliseconds wakeup();
-
-    // Hack:
-    void fail(const std::error_code& error)
-    {
-        callbacks_.on_fail(error);
-    }
+    virtual bc::client::sleep_time wakeup();
 
 private:
+    void watch(bc::hash_digest tx_hash);
     void queue_get_indices();
 
     // Server queries:
@@ -88,10 +84,18 @@ private:
     void get_tx_mem(bc::hash_digest tx_hash);
     void get_index(bc::hash_digest tx_hash);
     void send_tx(const bc::transaction_type& tx);
+    void query_address(const bc::payment_address& address);
 
     tx_db& db_;
     bc::client::obelisk_codec& codec_;
     tx_callbacks& callbacks_;
+
+    struct address_row
+    {
+        libbitcoin::client::sleep_time poll_time;
+        std::chrono::steady_clock::time_point last_check;
+    };
+    std::unordered_map<bc::payment_address, address_row> rows_;
 
     size_t queued_get_indices_;
     std::chrono::steady_clock::time_point last_wakeup_;
