@@ -122,17 +122,6 @@ bc::output_info_list tx_db::get_utxos()
     return out;
 }
 
-size_t tx_db::count_unconfirmed()
-{
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    size_t out = 0;
-    for (auto row: rows_)
-        if (row.second.state == tx_state::unconfirmed)
-            ++out;
-    return out;
-}
-
 void tx_db::send(const bc::transaction_type& tx)
 {
     insert(tx, tx_state::unsent);

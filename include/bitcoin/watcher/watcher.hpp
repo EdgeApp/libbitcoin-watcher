@@ -82,7 +82,6 @@ public:
     } watcher_status;
 
     BC_API watcher_status get_status();
-    BC_API int get_unconfirmed_count();
 
     // - Thread implementation: --------
 

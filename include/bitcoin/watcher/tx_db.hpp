@@ -83,11 +83,6 @@ public:
     BC_API bc::output_info_list get_utxos();
 
     /**
-     * Returns the number of unconfirmed transactions in the database.
-     */
-    BC_API size_t count_unconfirmed();
-
-    /**
      * Adds an unsent transaction to the database.
      */
     BC_API void send(const bc::transaction_type& tx);

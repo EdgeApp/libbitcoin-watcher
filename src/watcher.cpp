@@ -193,11 +193,6 @@ BC_API watcher::watcher_status watcher::get_status()
     return watcher_sync_ok;
 }
 
-BC_API int watcher::get_unconfirmed_count()
-{
-    return db_.count_unconfirmed();
-}
-
 void watcher::dump(std::ostream& out)
 {
     db_.dump(out);
