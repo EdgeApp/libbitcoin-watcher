@@ -59,17 +59,21 @@ public:
     BC_API output_info_list get_utxos(const payment_address& address);
     BC_API output_info_list get_utxos();
 
+    // - Chain height: -----------------
+    BC_API size_t get_last_block_height();
+
+    // - Callbacks: --------------------
     typedef std::function<void (const transaction_type&)> callback;
     BC_API void set_callback(callback&& cb);
 
     typedef std::function<void (std::error_code, const transaction_type&)> tx_sent_callback;
     BC_API void set_tx_sent_callback(tx_sent_callback&& cb);
 
-    // - Chain height: -----------------
-    BC_API size_t get_last_block_height();
-
     typedef std::function<void (const size_t)> block_height_callback;
     BC_API void set_height_callback(block_height_callback&& cb);
+
+    typedef std::function<void ()> fail_callback;
+    BC_API void set_fail_callback(fail_callback&& cb);
 
     // - Status queries: ---------------
     typedef enum {
@@ -129,6 +133,7 @@ private:
     callback cb_;
     block_height_callback height_cb_;
     tx_sent_callback tx_send_cb_;
+    fail_callback fail_cb_;
 
     // Everything below this point is only touched by the thread:
 

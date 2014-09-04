@@ -154,6 +154,15 @@ BC_API void watcher::set_tx_sent_callback(tx_sent_callback&& cb)
 }
 
 /**
+ * Sets up the server failure callback
+ */
+BC_API void watcher::set_fail_callback(fail_callback&& cb)
+{
+    std::lock_guard<std::mutex> lock(cb_mutex_);
+    fail_cb_ = std::move(cb);
+}
+
+/**
  * Obtains a list of unspent outputs for an address. This is needed to spend
  * funds.
  */
@@ -386,6 +395,8 @@ void watcher::on_send(const std::error_code& error, const transaction_type& tx)
 void watcher::on_fail(const std::error_code& error)
 {
     (void)error;
+    if (fail_cb_)
+        fail_cb_();
 }
 
 watcher::connection::~connection()
