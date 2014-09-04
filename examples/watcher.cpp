@@ -28,7 +28,6 @@ private:
     void cmd_height();
     void cmd_status();
     void cmd_tx_height(std::stringstream& args);
-    void cmd_tx_watch(std::stringstream& args);
     void cmd_tx_dump(std::stringstream& args);
     void cmd_tx_send(std::stringstream& args);
     void cmd_prioritize(std::stringstream& args);
@@ -91,7 +90,6 @@ int cli::run()
         else if (command == "status")       cmd_status();
         else if (command == "watch")        cmd_watch(reader);
         else if (command == "txheight")     cmd_tx_height(reader);
-        else if (command == "txwatch")      cmd_tx_watch(reader);
         else if (command == "txdump")       cmd_tx_dump(reader);
         else if (command == "txsend")       cmd_tx_send(reader);
         else if (command == "prioritize")   cmd_prioritize(reader);
@@ -124,7 +122,6 @@ void cli::cmd_help()
     std::cout << "  status            - get the watcher state" << std::endl;
     std::cout << "  watch <address> [poll ms] - watch an address" << std::endl;
     std::cout << "  txheight <hash>   - get a transaction's height" << std::endl;
-    std::cout << "  txwatch <hash>    - manually watch a specific transaction" << std::endl;
     std::cout << "  txdump <hash>     - show the contents of a transaction" << std::endl;
     std::cout << "  txsend <hash>     - push a transaction to the server" << std::endl;
     std::cout << "  prioritize [address] - check an address more frequently" << std::endl;
@@ -181,14 +178,6 @@ void cli::cmd_tx_height(std::stringstream& args)
         std::cout << height << std::endl;
     else
         std::cout << "Synchronizing..." << std::endl;
-}
-
-void cli::cmd_tx_watch(std::stringstream& args)
-{
-    bc::hash_digest txid = read_txid(args);
-    if (txid == bc::null_hash)
-        return;
-    watcher.watch_tx_mem(txid);
 }
 
 void cli::cmd_tx_dump(std::stringstream& args)

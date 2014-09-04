@@ -101,9 +101,6 @@ public:
     watcher(const watcher& copy) = delete;
     watcher& operator=(const watcher& copy) = delete;
 
-    // Mainly used internally, but also appears in the example code:
-    BC_API void watch_tx_mem(const hash_digest& txid);
-
     // Debugging code:
     BC_API void dump(std::ostream& out=std::cout);
 
@@ -123,7 +120,6 @@ private:
     // Methods for sending messages on that socket:
     void send_disconnect();
     void send_connect(std::string server);
-    void send_watch_tx(hash_digest tx_hash);
     void send_watch_addr(payment_address address, unsigned poll_ms);
     void send_send(const transaction_type& tx);
 

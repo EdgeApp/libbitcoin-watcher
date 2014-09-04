@@ -101,12 +101,6 @@ BC_API void watcher::watch_address(const payment_address& address, unsigned poll
     send_watch_addr(address, poll_ms);
 }
 
-BC_API void watcher::watch_tx_mem(const hash_digest& txid)
-{
-    send_watch_tx(txid);
-    std::cout << "Watching tx " << txid << std::endl;
-}
-
 /**
  * Checks a particular address more frequently (every other poll). To go back
  * to normal mode, pass an empty address.
@@ -286,18 +280,6 @@ void watcher::send_connect(std::string server)
     socket_.send(str.data(), str.size());
 }
 
-void watcher::send_watch_tx(hash_digest tx_hash)
-{
-    std::lock_guard<std::mutex> lock(socket_mutex_);
-
-    std::basic_ostringstream<uint8_t> stream;
-    auto serial = bc::make_serializer(std::ostreambuf_iterator<uint8_t>(stream));
-    serial.write_byte(msg_watch_tx);
-    serial.write_hash(tx_hash);
-    auto str = stream.str();
-    socket_.send(str.data(), str.size());
-}
-
 void watcher::send_watch_addr(payment_address address, unsigned poll_ms)
 {
     std::lock_guard<std::mutex> lock(socket_mutex_);
@@ -352,14 +334,6 @@ bool watcher::command(uint8_t* data, size_t size)
                 return true;
             }
             connection_->txu.start();
-        }
-        return true;
-
-    case msg_watch_tx:
-        {
-            auto tx_hash = serial.read_hash();
-            if (connection_)
-                connection_->txu.watch(tx_hash);
         }
         return true;
 
