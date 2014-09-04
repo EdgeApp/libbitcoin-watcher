@@ -75,14 +75,6 @@ public:
     typedef std::function<void ()> fail_callback;
     BC_API void set_fail_callback(fail_callback&& cb);
 
-    // - Status queries: ---------------
-    typedef enum {
-        watcher_sync_ok = 0,
-        watcher_syncing
-    } watcher_status;
-
-    BC_API watcher_status get_status();
-
     // - Thread implementation: --------
 
     /**

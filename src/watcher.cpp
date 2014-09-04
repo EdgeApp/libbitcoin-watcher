@@ -181,12 +181,6 @@ BC_API bool watcher::get_tx_height(hash_digest txid, int& height)
     return db_.has_tx(txid);
 }
 
-BC_API watcher::watcher_status watcher::get_status()
-{
-    // This is a terrible hack!
-    return watcher_sync_ok;
-}
-
 void watcher::dump(std::ostream& out)
 {
     db_.dump(out);
