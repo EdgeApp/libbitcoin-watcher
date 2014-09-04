@@ -29,10 +29,8 @@ BC_API tx_db::~tx_db()
 {
 }
 
-BC_API tx_db::tx_db(add_handler&& on_add, height_handler&& on_height)
-  : on_add_(std::move(on_add)),
-    on_height_(std::move(on_height)),
-    last_height_(0)
+BC_API tx_db::tx_db()
+  : last_height_(0)
 {
 }
 
@@ -257,34 +255,24 @@ void tx_db::dump(std::ostream& out)
 
 void tx_db::at_height(size_t height)
 {
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        last_height_ = height;
+    std::lock_guard<std::mutex> lock(mutex_);
+    last_height_ = height;
 
-        // Check for blockchain forks:
-        check_fork(height);
-    }
-    on_height_(last_height_);
+    // Check for blockchain forks:
+    check_fork(height);
 }
 
-bc::hash_digest tx_db::insert(const bc::transaction_type& tx, tx_state state)
+bool tx_db::insert(const bc::transaction_type& tx, tx_state state)
 {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    // Do not stomp existing tx's:
     auto tx_hash = bc::hash_transaction(tx);
-
-    bool need_callback = false;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        // Do not stomp existing tx's:
-        if (rows_.find(tx_hash) == rows_.end()) {
-            rows_[tx_hash] = tx_row{tx, state, 0, false};
-            need_callback = true;
-        }
+    if (rows_.find(tx_hash) == rows_.end()) {
+        rows_[tx_hash] = tx_row{tx, state, 0, false};
+        return true;
     }
-    if (need_callback)
-        on_add_(tx);
-
-    return tx_hash;
+    return false;
 }
 
 void tx_db::confirmed(bc::hash_digest tx_hash, size_t block_height)

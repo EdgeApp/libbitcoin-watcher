@@ -26,9 +26,10 @@ BC_API tx_updater::~tx_updater()
 {
 }
 
-BC_API tx_updater::tx_updater(tx_db& db, bc::client::obelisk_codec& codec, send_handler&& on_send)
+BC_API tx_updater::tx_updater(tx_db& db, bc::client::obelisk_codec& codec,
+    tx_callbacks& callbacks)
   : db_(db), codec_(codec),
-    on_send_(std::move(on_send)),
+    callbacks_(callbacks),
     queued_get_indices_(0),
     last_wakeup_(std::chrono::steady_clock::now())
 {
@@ -54,7 +55,8 @@ void tx_updater::watch(bc::hash_digest tx_hash)
 
 void tx_updater::send(bc::transaction_type tx)
 {
-    db_.insert(tx, tx_state::unsent);
+    if (db_.insert(tx, tx_state::unsent))
+        callbacks_.on_add(tx);
     send_tx(tx);
 }
 
@@ -88,7 +90,7 @@ void tx_updater::get_height()
     auto on_error = [this](const std::error_code& error)
     {
         std::cout << "tx_updater::get_height error" << std::endl;
-        server_fail(error);
+        callbacks_.on_fail(error);
     };
 
     auto on_done = [this](size_t height)
@@ -97,6 +99,7 @@ void tx_updater::get_height()
         if (height != db_.last_height())
         {
             db_.at_height(height);
+            callbacks_.on_height(height);
 
             // Query all unconfirmed transactions:
             db_.foreach_unconfirmed(std::bind(&tx_updater::get_index, this, _1));
@@ -121,7 +124,8 @@ void tx_updater::get_tx(bc::hash_digest tx_hash)
     {
         std::cout << "tx_updater::get_tx done" << std::endl;
         BITCOIN_ASSERT(tx_hash == bc::hash_transaction(tx));
-        db_.insert(tx, tx_state::unconfirmed);
+        if (db_.insert(tx, tx_state::unconfirmed))
+            callbacks_.on_add(tx);
         get_index(tx_hash);
     };
 
@@ -133,14 +137,15 @@ void tx_updater::get_tx_mem(bc::hash_digest tx_hash)
     auto on_error = [this](const std::error_code& error)
     {
         std::cout << "tx_updater::get_tx_mem error" << std::endl;
-        server_fail(error);
+        callbacks_.on_fail(error);
     };
 
     auto on_done = [this, tx_hash](const bc::transaction_type& tx)
     {
         std::cout << "tx_updater::get_tx_mem done" << std::endl;
         BITCOIN_ASSERT(tx_hash == bc::hash_transaction(tx));
-        db_.insert(tx, tx_state::unconfirmed);
+        if (db_.insert(tx, tx_state::unconfirmed))
+            callbacks_.on_add(tx);
         get_index(tx_hash);
     };
 
@@ -187,7 +192,7 @@ void tx_updater::send_tx(const bc::transaction_type& tx)
 
         //server_fail(error);
         db_.forget(bc::hash_transaction(tx));
-        on_send_(error, tx);
+        callbacks_.on_send(error, tx);
     };
 
     auto on_done = [this, tx]()
@@ -196,7 +201,7 @@ void tx_updater::send_tx(const bc::transaction_type& tx)
 
         std::error_code error;
         db_.unconfirmed(bc::hash_transaction(tx));
-        on_send_(error, tx);
+        callbacks_.on_send(error, tx);
     };
 
     codec_.broadcast_transaction(on_error, on_done, tx);

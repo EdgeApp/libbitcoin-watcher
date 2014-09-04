@@ -47,9 +47,7 @@ BC_API watcher::~watcher()
 }
 
 BC_API watcher::watcher()
-  : db_(std::bind(&watcher::on_add, this, _1),
-        std::bind(&watcher::on_height, this, _1)),
-    socket_(ctx_, ZMQ_PAIR),
+  : socket_(ctx_, ZMQ_PAIR),
     connection_(nullptr)
 {
     std::stringstream name;
@@ -323,8 +321,7 @@ bool watcher::command(uint8_t* data, size_t size)
         {
             std::string server(data + 1, data + size);
             delete connection_;
-            connection_ = new connection(db_, ctx_,
-                std::bind(&watcher::on_sent, this, _1, _2));
+            connection_ = new connection(db_, ctx_, *this);
             if (!connection_->socket.connect(server))
             {
                 delete connection_;
@@ -379,21 +376,26 @@ void watcher::on_height(size_t height)
         height_cb_(height);
 }
 
-void watcher::on_sent(const std::error_code& error, const transaction_type& tx)
+void watcher::on_send(const std::error_code& error, const transaction_type& tx)
 {
     std::lock_guard<std::mutex> lock(cb_mutex_);
     if (tx_send_cb_)
         tx_send_cb_(error, tx);
 }
 
+void watcher::on_fail(const std::error_code& error)
+{
+    (void)error;
+}
+
 watcher::connection::~connection()
 {
 }
 
-watcher::connection::connection(tx_db& db, void *ctx, tx_updater::send_handler&& on_send)
+watcher::connection::connection(tx_db& db, void *ctx, tx_callbacks& cb)
   : socket(ctx),
     codec(socket),
-    txu(db, codec, std::move(on_send)),
+    txu(db, codec, cb),
     adu(txu, codec)
 {
 }

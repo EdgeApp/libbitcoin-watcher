@@ -25,10 +25,35 @@
 
 namespace libwallet {
 
-inline void server_fail(const std::error_code& error)
+/**
+ * Interface containing the events the updater can trigger.
+ */
+class BC_API tx_callbacks
 {
-    (void)error;
-}
+public:
+    virtual ~tx_callbacks() {};
+
+    /**
+     * Called when the updater inserts a transaction into the database.
+     */
+    virtual void on_add(const bc::transaction_type& tx) = 0;
+
+    /**
+     * Called when the updater detects a new block.
+     */
+    virtual void on_height(size_t height) = 0;
+
+    /**
+     * Called when the updater has validated a transaction for send.
+     */
+    virtual void on_send(const std::error_code& error,
+        const bc::transaction_type& tx) = 0;
+
+    /**
+     * Called when the updater sees an unexpected obelisk server failure.
+     */
+    virtual void on_fail(const std::error_code& error) = 0;
+};
 
 /**
  * Syncs a set of transactions with the bitcoin server.
@@ -37,10 +62,9 @@ class BC_API tx_updater
   : public bc::client::sleeper
 {
 public:
-    typedef std::function<void (const std::error_code&, const bc::transaction_type&)> send_handler;
-
     BC_API ~tx_updater();
-    BC_API tx_updater(tx_db& db, bc::client::obelisk_codec& codec, send_handler&& on_send);
+    BC_API tx_updater(tx_db& db, bc::client::obelisk_codec& codec,
+        tx_callbacks& callbacks);
     void start();
 
     BC_API void watch(bc::hash_digest tx_hash);
@@ -48,6 +72,12 @@ public:
 
     // Sleeper interface:
     virtual std::chrono::milliseconds wakeup();
+
+    // Hack:
+    void fail(const std::error_code& error)
+    {
+        callbacks_.on_fail(error);
+    }
 
 private:
     void queue_get_indices();
@@ -61,7 +91,7 @@ private:
 
     tx_db& db_;
     bc::client::obelisk_codec& codec_;
-    send_handler on_send_;
+    tx_callbacks& callbacks_;
 
     size_t queued_get_indices_;
     std::chrono::steady_clock::time_point last_wakeup_;

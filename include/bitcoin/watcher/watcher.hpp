@@ -34,6 +34,7 @@ using namespace libbitcoin;
  * client library is broken, it opens a new obelisk connection every time.)
  */
 class BC_API watcher
+  : public tx_callbacks
 {
 public:
     BC_API ~watcher();
@@ -135,7 +136,7 @@ private:
     struct connection
     {
         ~connection();
-        connection(tx_db& db, void *ctx, tx_updater::send_handler&& on_send);
+        connection(tx_db& db, void *ctx, tx_callbacks& cb);
 
         bc::client::zeromq_socket socket;
         bc::client::obelisk_codec codec;
@@ -145,9 +146,12 @@ private:
     connection* connection_;
 
     bool command(uint8_t* data, size_t size);
-    void on_add(const transaction_type& tx);
-    void on_height(size_t height);
-    void on_sent(const std::error_code& error, const transaction_type& tx);
+
+    // tx_callbacks interface:
+    virtual void on_add(const transaction_type& tx);
+    virtual void on_height(size_t height);
+    virtual void on_send(const std::error_code& error, const transaction_type& tx);
+    virtual void on_fail(const std::error_code& error);
 };
 
 } // namespace libwallet

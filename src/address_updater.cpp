@@ -69,7 +69,7 @@ void address_updater::query_address(const bc::payment_address& address)
     auto on_error = [this](const std::error_code& error)
     {
         std::cout << "address_updater::query_address error" << std::endl;
-        server_fail(error);
+        txu_.fail(error);
     };
 
     auto on_done = [this](const bc::blockchain::history_list& history)

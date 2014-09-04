@@ -49,11 +49,8 @@ enum class tx_state
 class BC_API tx_db
 {
 public:
-    typedef std::function<void (const bc::transaction_type& tx)> add_handler;
-    typedef std::function<void (const size_t)> height_handler;
-
     BC_API ~tx_db();
-    BC_API tx_db(add_handler&& on_add, height_handler&& on_height);
+    BC_API tx_db();
 
     /**
      * Returns the highest block that this database has seen.
@@ -117,25 +114,24 @@ private:
     /**
      * Updates the block height.
      */
-    BC_API void at_height(size_t height);
+    void at_height(size_t height);
 
     /**
      * Insert a new transaction into the database.
-     * @param seen True if the transaction is in the bitcoin network,
-     * or false if it comes from the app and hasn't been sent yet.
+     * @return true if the callback should be fired.
      */
-    BC_API bc::hash_digest insert(const bc::transaction_type &tx, tx_state state);
+    bool insert(const bc::transaction_type &tx, tx_state state);
 
     /**
      * Mark a transaction as confirmed.
      * TODO: Require the block hash as well, once obelisk provides this.
      */
-    BC_API void confirmed(bc::hash_digest tx_hash, size_t block_height);
+    void confirmed(bc::hash_digest tx_hash, size_t block_height);
 
     /**
      * Mark a transaction as unconfirmed.
      */
-    BC_API void unconfirmed(bc::hash_digest tx_hash);
+    void unconfirmed(bc::hash_digest tx_hash);
 
     /**
      * Delete a transaction.
@@ -156,8 +152,6 @@ private:
 
     // Guards access to object state:
     std::mutex mutex_;
-    add_handler on_add_;
-    height_handler on_height_;
 
     // The last block seen on the network:
     size_t last_height_;
