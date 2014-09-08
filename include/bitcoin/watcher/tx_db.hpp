@@ -19,10 +19,10 @@
 #ifndef LIBBITCOIN_WATCHER_TX_DB_HPP
 #define LIBBITCOIN_WATCHER_TX_DB_HPP
 
-#include <map>
+#include <bitcoin/bitcoin.hpp>
 #include <mutex>
 #include <ostream>
-#include <bitcoin/bitcoin.hpp>
+#include <unordered_map>
 
 namespace libwallet {
 
@@ -168,7 +168,7 @@ private:
         // question whether or not that block is on the main chain:
         bool need_check;
     };
-    std::map<bc::hash_digest, tx_row> rows_;
+    std::unordered_map<bc::hash_digest, tx_row> rows_;
 };
 
 } // namespace libwallet

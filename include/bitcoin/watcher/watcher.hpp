@@ -20,9 +20,10 @@
 #define LIBBITCOIN_WATCHER_WATCHER_HPP
 
 #include <bitcoin/watcher/tx_updater.hpp>
-#include <unordered_map>
 #include <bitcoin/client.hpp>
 #include <zmq.hpp>
+#include <iostream>
+#include <unordered_map>
 
 namespace libwallet {
 

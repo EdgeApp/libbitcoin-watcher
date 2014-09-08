@@ -18,6 +18,8 @@
  */
 #include <bitcoin/watcher/tx_updater.hpp>
 
+#include <iostream>
+
 namespace libwallet {
 
 using std::placeholders::_1;

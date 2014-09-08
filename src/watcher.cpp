@@ -18,9 +18,6 @@
  */
 #include <bitcoin/watcher/watcher.hpp>
 
-#include <unistd.h>
-#include <iostream>
-#include <iterator>
 #include <sstream>
 
 namespace libwallet {

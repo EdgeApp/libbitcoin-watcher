@@ -13,14 +13,12 @@ AX_CXX_COMPILE_STDCXX_11(noext,mandatory)
 
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
-AX_BOOST_BASE
-
 PKG_PROG_PKG_CONFIG
 
 AM_CXXFLAGS="-ggdb -g3 -Wall -Wno-missing-braces -pedantic -Wextra -fstack-protector-all -DDEBUG -fvisibility=hidden -fvisibility-inlines-hidden"
 AC_SUBST([AM_CXXFLAGS])
 
-PKG_CHECK_MODULES([libbitcoin], [libbitcoin libwallet libbitcoin-client])
+PKG_CHECK_MODULES([libbitcoin], [libbitcoin libbitcoin-client])
 
 AC_ARG_WITH([pkgconfigdir], AS_HELP_STRING([--with-pkgconfigdir=PATH],
     [Path to the pkgconfig directory [[LIBDIR/pkgconfig]]]),

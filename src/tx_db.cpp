@@ -162,7 +162,7 @@ bool tx_db::load(const bc::data_chunk& data)
 
     auto serial = bc::make_deserializer(data.begin(), data.end());
     size_t last_height;
-    std::map<bc::hash_digest, tx_row> rows;
+    std::unordered_map<bc::hash_digest, tx_row> rows;
 
     try
     {
