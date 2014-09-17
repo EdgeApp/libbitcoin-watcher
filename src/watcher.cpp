@@ -164,7 +164,22 @@ BC_API output_info_list watcher::get_utxos(const payment_address& address)
 
 BC_API output_info_list watcher::get_utxos()
 {
-    return db_.get_utxos();
+    auto utxos = db_.get_utxos();
+    output_info_list out;
+
+    for (auto& utxo: utxos)
+    {
+        auto tx = db_.get_tx(utxo.point.hash);
+        auto& output = tx.outputs[utxo.point.index];
+
+        bc::payment_address to_address;
+        if (bc::extract(to_address, output.script))
+            for (auto address: addresses_)
+                if (address.first == to_address)
+                    out.push_back(utxo);
+    }
+
+    return out;
 }
 
 BC_API size_t watcher::get_last_block_height()
