@@ -43,7 +43,8 @@ void tx_updater::start()
     // Check for new blocks:
     get_height();
 
-    // Handle block-fork checks:
+    // Handle block-fork checks & unconfirmed transactions:
+    db_.foreach_unconfirmed(std::bind(&tx_updater::get_index, this, _1));
     queue_get_indices();
 
     // Transmit all unsent transactions:
