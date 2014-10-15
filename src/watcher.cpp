@@ -177,7 +177,11 @@ BC_API output_info_list watcher::get_utxos(const payment_address& address)
     return out;
 }
 
-BC_API output_info_list watcher::get_utxos()
+/**
+ * Returns all the unspent transaction outputs in the wallet.
+ * @param filter true to filter out unconfirmed outputs.
+ */
+BC_API output_info_list watcher::get_utxos(bool filter)
 {
     auto utxos = db_.get_utxos();
     output_info_list out;
@@ -190,7 +194,8 @@ BC_API output_info_list watcher::get_utxos()
         bc::payment_address to_address;
         if (bc::extract(to_address, output.script))
             if (addresses_.find(to_address) != addresses_.end())
-                out.push_back(utxo);
+                if (!filter || db_.get_tx_height(utxo.point.hash) || is_spend(tx))
+                    out.push_back(utxo);
     }
 
     return out;

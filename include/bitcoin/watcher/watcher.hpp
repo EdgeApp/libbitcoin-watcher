@@ -58,7 +58,7 @@ public:
     BC_API transaction_type find_tx(hash_digest txid);
     BC_API bool get_tx_height(hash_digest txid, int& height);
     BC_API output_info_list get_utxos(const payment_address& address);
-    BC_API output_info_list get_utxos();
+    BC_API output_info_list get_utxos(bool filter=false);
 
     // - Chain height: -----------------
     BC_API size_t get_last_block_height();
