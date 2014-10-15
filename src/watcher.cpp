@@ -159,7 +159,21 @@ BC_API void watcher::set_fail_callback(fail_callback&& cb)
  */
 BC_API output_info_list watcher::get_utxos(const payment_address& address)
 {
-    return db_.get_utxos(address);
+    auto utxos = db_.get_utxos();
+    output_info_list out;
+
+    for (auto& utxo: utxos)
+    {
+        const auto& tx = db_.get_tx(utxo.point.hash);
+        auto& output = tx.outputs[utxo.point.index];
+
+        bc::payment_address to_address;
+        if (bc::extract(to_address, output.script))
+            if (address == to_address && db_.get_tx_height(utxo.point.hash))
+                out.push_back(utxo);
+    }
+
+    return out;
 }
 
 BC_API output_info_list watcher::get_utxos()
@@ -169,14 +183,13 @@ BC_API output_info_list watcher::get_utxos()
 
     for (auto& utxo: utxos)
     {
-        auto tx = db_.get_tx(utxo.point.hash);
+        const auto& tx = db_.get_tx(utxo.point.hash);
         auto& output = tx.outputs[utxo.point.index];
 
         bc::payment_address to_address;
         if (bc::extract(to_address, output.script))
-            for (auto address: addresses_)
-                if (address.first == to_address)
-                    out.push_back(utxo);
+            if (addresses_.find(to_address) != addresses_.end())
+                out.push_back(utxo);
     }
 
     return out;
