@@ -169,7 +169,8 @@ BC_API output_info_list watcher::get_utxos(const payment_address& address)
 
         bc::payment_address to_address;
         if (bc::extract(to_address, output.script))
-            if (address == to_address && db_.get_tx_height(utxo.point.hash))
+            if (address == to_address &&
+                (db_.get_tx_height(utxo.point.hash) || is_spend(tx)))
                 out.push_back(utxo);
     }
 
@@ -204,6 +205,22 @@ BC_API bool watcher::get_tx_height(hash_digest txid, int& height)
 {
     height = db_.get_tx_height(txid);
     return db_.has_tx(txid);
+}
+
+/**
+ * Returns true if all inputs are addresses we control.
+ */
+bool watcher::is_spend(const bc::transaction_type& tx)
+{
+    for (auto& input: tx.inputs)
+    {
+        bc::payment_address address;
+        if (!bc::extract(address, input.script))
+            return false;
+        if (addresses_.find(address) == addresses_.end())
+            return false;
+    }
+    return true;
 }
 
 void watcher::dump(std::ostream& out)
