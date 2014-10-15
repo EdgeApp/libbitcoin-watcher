@@ -83,11 +83,6 @@ public:
     BC_API bc::output_info_list get_utxos();
 
     /**
-     * Adds an unsent transaction to the database.
-     */
-    BC_API void send(const bc::transaction_type& tx);
-
-    /**
      * Write the database to an in-memory blob.
      */
     BC_API bc::data_chunk serialize();

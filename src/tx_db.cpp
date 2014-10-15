@@ -122,11 +122,6 @@ bc::output_info_list tx_db::get_utxos()
     return out;
 }
 
-void tx_db::send(const bc::transaction_type& tx)
-{
-    insert(tx, tx_state::unsent);
-}
-
 bc::data_chunk tx_db::serialize()
 {
     std::lock_guard<std::mutex> lock(mutex_);
