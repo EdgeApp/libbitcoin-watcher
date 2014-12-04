@@ -31,7 +31,8 @@
 
 // Convenience header that includes everything
 // Not to be used internally. For API users.
-#include <bitcoin/watcher/watcher.hpp>
+#include <bitcoin/watcher/tx_db.hpp>
+#include <bitcoin/watcher/tx_updater.hpp>
 
 #endif
 
