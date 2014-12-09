@@ -71,6 +71,8 @@ public:
         bc::client::sleep_time poll);
     BC_API void send(bc::transaction_type tx);
 
+    BC_API bool watching(const bc::payment_address& address);
+
     // Sleeper interface:
     virtual bc::client::sleep_time wakeup();
 
