@@ -18,8 +18,6 @@
  */
 #include <bitcoin/watcher/tx_updater.hpp>
 
-#include <iostream>
-
 namespace libwallet {
 
 using std::placeholders::_1;
@@ -54,9 +52,6 @@ void tx_updater::start()
 void tx_updater::watch(const bc::payment_address& address,
     bc::client::sleep_time poll)
 {
-     std::cout << "tx_updater::watch " << address.encoded() << " " <<
-        poll.count() << std::endl;
-
     // Only insert if it isn't already present:
     rows_[address] = address_row{poll, std::chrono::steady_clock::now()};
     query_address(address);
@@ -144,14 +139,12 @@ void tx_updater::get_height()
 {
     auto on_error = [this](const std::error_code& error)
     {
-        std::cout << "tx_updater::get_height error" << std::endl;
         (void)error;
         failed_ = true;
     };
 
     auto on_done = [this](size_t height)
     {
-        std::cout << "tx_updater::get_height done" << std::endl;
         if (height != db_.last_height())
         {
             db_.at_height(height);
@@ -170,7 +163,6 @@ void tx_updater::get_tx(bc::hash_digest tx_hash, bool want_inputs)
 {
     auto on_error = [this, tx_hash, want_inputs](const std::error_code& error)
     {
-        std::cout << "tx_updater::get_tx error" << std::endl;
         // A failure means the transaction might be in the mempool:
         (void)error;
         get_tx_mem(tx_hash, want_inputs);
@@ -178,7 +170,6 @@ void tx_updater::get_tx(bc::hash_digest tx_hash, bool want_inputs)
 
     auto on_done = [this, tx_hash, want_inputs](const bc::transaction_type& tx)
     {
-        std::cout << "tx_updater::get_tx done" << std::endl;
         BITCOIN_ASSERT(tx_hash == bc::hash_transaction(tx));
         if (db_.insert(tx, tx_state::unconfirmed))
             callbacks_.on_add(tx);
@@ -194,14 +185,12 @@ void tx_updater::get_tx_mem(bc::hash_digest tx_hash, bool want_inputs)
 {
     auto on_error = [this](const std::error_code& error)
     {
-        std::cout << "tx_updater::get_tx_mem error" << std::endl;
         (void)error;
         failed_ = true;
     };
 
     auto on_done = [this, tx_hash, want_inputs](const bc::transaction_type& tx)
     {
-        std::cout << "tx_updater::get_tx_mem done" << std::endl;
         BITCOIN_ASSERT(tx_hash == bc::hash_transaction(tx));
         if (db_.insert(tx, tx_state::unconfirmed))
             callbacks_.on_add(tx);
@@ -219,8 +208,6 @@ void tx_updater::get_index(bc::hash_digest tx_hash)
 
     auto on_error = [this, tx_hash](const std::error_code& error)
     {
-        std::cout << "tx_updater::get_index error" << std::endl;
-
         // A failure means that the transaction is unconfirmed:
         (void)error;
         db_.unconfirmed(tx_hash);
@@ -231,8 +218,6 @@ void tx_updater::get_index(bc::hash_digest tx_hash)
 
     auto on_done = [this, tx_hash](size_t block_height, size_t index)
     {
-        std::cout << "tx_updater::get_index done" << std::endl;
-
         // The transaction is confirmed:
         (void)index;
 
@@ -249,8 +234,6 @@ void tx_updater::send_tx(const bc::transaction_type& tx)
 {
     auto on_error = [this, tx](const std::error_code& error)
     {
-        std::cout << "tx_updater::send_tx error" << std::endl;
-
         //server_fail(error);
         db_.forget(bc::hash_transaction(tx));
         callbacks_.on_send(error, tx);
@@ -258,8 +241,6 @@ void tx_updater::send_tx(const bc::transaction_type& tx)
 
     auto on_done = [this, tx]()
     {
-        std::cout << "tx_updater::send_tx done" << std::endl;
-
         std::error_code error;
         db_.unconfirmed(bc::hash_transaction(tx));
         callbacks_.on_send(error, tx);
@@ -272,14 +253,12 @@ void tx_updater::query_address(const bc::payment_address& address)
 {
     auto on_error = [this](const std::error_code& error)
     {
-        std::cout << "address_updater::query_address error" << std::endl;
         (void)error;
         failed_ = true;
     };
 
     auto on_done = [this](const bc::blockchain::history_list& history)
     {
-        std::cout << "address_updater::query_address done" << std::endl;
         for (auto& row: history)
         {
             watch(row.output.hash, true);
