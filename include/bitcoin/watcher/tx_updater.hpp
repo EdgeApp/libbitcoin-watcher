@@ -50,6 +50,12 @@ public:
         const bc::transaction_type& tx) = 0;
 
     /**
+     * Called when the updater has finished all its address queries,
+     * and balances should now be up-to-date.
+     */
+    virtual void on_quiet() {}
+
+    /**
      * Called when the updater sees an unexpected obelisk server failure.
      */
     virtual void on_fail() = 0;
@@ -79,6 +85,7 @@ public:
 private:
     void watch(bc::hash_digest tx_hash, bool want_inputs);
     void get_inputs(const bc::transaction_type& tx);
+    void query_done();
     void queue_get_indices();
 
     // Server queries:
@@ -101,6 +108,7 @@ private:
     std::unordered_map<bc::payment_address, address_row> rows_;
 
     bool failed_;
+    size_t queued_queries_;
     size_t queued_get_indices_;
     std::chrono::steady_clock::time_point last_wakeup_;
 };

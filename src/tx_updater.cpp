@@ -31,6 +31,7 @@ BC_API tx_updater::tx_updater(tx_db& db, bc::client::obelisk_codec& codec,
   : db_(db), codec_(codec),
     callbacks_(callbacks),
     failed_(false),
+    queued_queries_(0),
     queued_get_indices_(0),
     last_wakeup_(std::chrono::steady_clock::now())
 {
@@ -126,6 +127,13 @@ void tx_updater::get_inputs(const bc::transaction_type& tx)
         watch(input.previous_output.hash, false);
 }
 
+void tx_updater::query_done()
+{
+    --queued_queries_;
+    if (!queued_queries_)
+        callbacks_.on_quiet();
+}
+
 void tx_updater::queue_get_indices()
 {
     if (queued_get_indices_)
@@ -161,11 +169,14 @@ void tx_updater::get_height()
 
 void tx_updater::get_tx(bc::hash_digest tx_hash, bool want_inputs)
 {
+    ++queued_queries_;
+
     auto on_error = [this, tx_hash, want_inputs](const std::error_code& error)
     {
         // A failure means the transaction might be in the mempool:
         (void)error;
         get_tx_mem(tx_hash, want_inputs);
+        query_done();
     };
 
     auto on_done = [this, tx_hash, want_inputs](const bc::transaction_type& tx)
@@ -176,6 +187,7 @@ void tx_updater::get_tx(bc::hash_digest tx_hash, bool want_inputs)
         if (want_inputs)
             get_inputs(tx);
         get_index(tx_hash);
+        query_done();
     };
 
     codec_.fetch_transaction(on_error, on_done, tx_hash);
@@ -183,10 +195,13 @@ void tx_updater::get_tx(bc::hash_digest tx_hash, bool want_inputs)
 
 void tx_updater::get_tx_mem(bc::hash_digest tx_hash, bool want_inputs)
 {
+    ++queued_queries_;
+
     auto on_error = [this](const std::error_code& error)
     {
         (void)error;
         failed_ = true;
+        query_done();
     };
 
     auto on_done = [this, tx_hash, want_inputs](const bc::transaction_type& tx)
@@ -197,6 +212,7 @@ void tx_updater::get_tx_mem(bc::hash_digest tx_hash, bool want_inputs)
         if (want_inputs)
             get_inputs(tx);
         get_index(tx_hash);
+        query_done();
     };
 
     codec_.fetch_unconfirmed_transaction(on_error, on_done, tx_hash);
@@ -251,10 +267,13 @@ void tx_updater::send_tx(const bc::transaction_type& tx)
 
 void tx_updater::query_address(const bc::payment_address& address)
 {
+    ++queued_queries_;
+
     auto on_error = [this](const std::error_code& error)
     {
         (void)error;
         failed_ = true;
+        query_done();
     };
 
     auto on_done = [this](const bc::blockchain::history_list& history)
@@ -265,6 +284,7 @@ void tx_updater::query_address(const bc::payment_address& address)
             if (row.spend.hash != bc::null_hash)
                 watch(row.spend.hash, true);
         }
+        query_done();
     };
 
     codec_.address_fetch_history(on_error, on_done, address);
