@@ -8,8 +8,8 @@ all: watcher
 .cpp.o:
 	$(CXX) -o $@ -c $< $(CXXFLAGS)
 
-watcher: watcher.o
-	$(CXX) $(LDFLAGS) -o $@ $< $(LIBS)
+watcher: watcher.o read_line.o
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 clean:
 	rm -f watcher
