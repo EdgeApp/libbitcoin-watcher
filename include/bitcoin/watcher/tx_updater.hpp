@@ -74,13 +74,13 @@ public:
     void start();
 
     BC_API void watch(const bc::payment_address& address,
-        bc::client::sleep_time poll);
+        bc::client::period_ms poll);
     BC_API void send(bc::transaction_type tx);
 
     BC_API bool watching(const bc::payment_address& address);
 
     // Sleeper interface:
-    virtual bc::client::sleep_time wakeup();
+    virtual bc::client::period_ms wakeup();
 
 private:
     void watch(bc::hash_digest tx_hash, bool want_inputs);
@@ -102,7 +102,7 @@ private:
 
     struct address_row
     {
-        libbitcoin::client::sleep_time poll_time;
+        libbitcoin::client::period_ms poll_time;
         std::chrono::steady_clock::time_point last_check;
     };
     std::unordered_map<bc::payment_address, address_row> rows_;

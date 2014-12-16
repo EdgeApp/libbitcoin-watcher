@@ -51,7 +51,7 @@ void tx_updater::start()
 }
 
 void tx_updater::watch(const bc::payment_address& address,
-    bc::client::sleep_time poll)
+    bc::client::period_ms poll)
 {
     // Only insert if it isn't already present:
     rows_[address] = address_row{poll, std::chrono::steady_clock::now()};
@@ -70,20 +70,20 @@ bool tx_updater::watching(const bc::payment_address& address)
     return rows_.find(address) != rows_.end();
 }
 
-bc::client::sleep_time tx_updater::wakeup()
+bc::client::period_ms tx_updater::wakeup()
 {
-    bc::client::sleep_time next_wakeup(0);
+    bc::client::period_ms next_wakeup(0);
     auto now = std::chrono::steady_clock::now();
 
     // Figure out when our next block check is:
     auto period = std::chrono::seconds(30);
-    auto elapsed = std::chrono::duration_cast<bc::client::sleep_time>(
+    auto elapsed = std::chrono::duration_cast<bc::client::period_ms>(
         now - last_wakeup_);
     if (period <= elapsed)
     {
         get_height();
         last_wakeup_ = now;
-        elapsed = bc::client::sleep_time::zero();
+        elapsed = bc::client::period_ms::zero();
     }
     next_wakeup = period - elapsed;
 
@@ -91,7 +91,7 @@ bc::client::sleep_time tx_updater::wakeup()
     for (auto& row: rows_)
     {
         auto poll_time = row.second.poll_time;
-        auto elapsed = std::chrono::duration_cast<bc::client::sleep_time>(
+        auto elapsed = std::chrono::duration_cast<bc::client::period_ms>(
             now - row.second.last_check);
         if (poll_time <= elapsed)
         {
@@ -276,7 +276,7 @@ void tx_updater::query_address(const bc::payment_address& address)
         query_done();
     };
 
-    auto on_done = [this](const bc::blockchain::history_list& history)
+    auto on_done = [this](const bc::client::history_list& history)
     {
         for (auto& row: history)
         {
