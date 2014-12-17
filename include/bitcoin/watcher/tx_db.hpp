@@ -73,6 +73,11 @@ public:
     BC_API size_t get_tx_height(bc::hash_digest tx_hash);
 
     /**
+     * Returns true if this address has received any funds.
+     */
+    BC_API bool has_history(const bc::payment_address& address);
+
+    /**
      * Get all unspent outputs in the database.
      */
     BC_API bc::output_info_list get_utxos();

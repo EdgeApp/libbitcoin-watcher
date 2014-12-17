@@ -70,6 +70,24 @@ size_t tx_db::get_tx_height(bc::hash_digest tx_hash)
     return i->second.block_height;
 }
 
+bool tx_db::has_history(const bc::payment_address& address)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    for (auto& row: rows_)
+    {
+        for (auto& output: row.second.tx.outputs)
+        {
+            bc::payment_address to_address;
+            if (bc::extract(to_address, output.script))
+                if (address == to_address)
+                    return true;
+        }
+    }
+
+    return false;
+}
+
 bc::output_info_list tx_db::get_utxos()
 {
     std::lock_guard<std::mutex> lock(mutex_);
