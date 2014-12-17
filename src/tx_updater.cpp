@@ -18,8 +18,6 @@
  */
 #include <bitcoin/watcher/tx_updater.hpp>
 
-#include <iostream>
-
 namespace libwallet {
 
 using std::placeholders::_1;
@@ -33,6 +31,7 @@ BC_API tx_updater::tx_updater(tx_db& db, bc::client::obelisk_codec& codec,
   : db_(db), codec_(codec),
     callbacks_(callbacks),
     failed_(false),
+    queued_queries_(0),
     queued_get_indices_(0),
     last_wakeup_(std::chrono::steady_clock::now())
 {
@@ -54,9 +53,6 @@ void tx_updater::start()
 void tx_updater::watch(const bc::payment_address& address,
     bc::client::sleep_time poll)
 {
-     std::cout << "tx_updater::watch " << address.encoded() << " " <<
-        poll.count() << std::endl;
-
     // Only insert if it isn't already present:
     rows_[address] = address_row{poll, std::chrono::steady_clock::now()};
     query_address(address);
@@ -131,6 +127,13 @@ void tx_updater::get_inputs(const bc::transaction_type& tx)
         watch(input.previous_output.hash, false);
 }
 
+void tx_updater::query_done()
+{
+    --queued_queries_;
+    if (!queued_queries_)
+        callbacks_.on_quiet();
+}
+
 void tx_updater::queue_get_indices()
 {
     if (queued_get_indices_)
@@ -144,14 +147,12 @@ void tx_updater::get_height()
 {
     auto on_error = [this](const std::error_code& error)
     {
-        std::cout << "tx_updater::get_height error" << std::endl;
         (void)error;
         failed_ = true;
     };
 
     auto on_done = [this](size_t height)
     {
-        std::cout << "tx_updater::get_height done" << std::endl;
         if (height != db_.last_height())
         {
             db_.at_height(height);
@@ -168,23 +169,25 @@ void tx_updater::get_height()
 
 void tx_updater::get_tx(bc::hash_digest tx_hash, bool want_inputs)
 {
+    ++queued_queries_;
+
     auto on_error = [this, tx_hash, want_inputs](const std::error_code& error)
     {
-        std::cout << "tx_updater::get_tx error" << std::endl;
         // A failure means the transaction might be in the mempool:
         (void)error;
         get_tx_mem(tx_hash, want_inputs);
+        query_done();
     };
 
     auto on_done = [this, tx_hash, want_inputs](const bc::transaction_type& tx)
     {
-        std::cout << "tx_updater::get_tx done" << std::endl;
         BITCOIN_ASSERT(tx_hash == bc::hash_transaction(tx));
         if (db_.insert(tx, tx_state::unconfirmed))
             callbacks_.on_add(tx);
         if (want_inputs)
             get_inputs(tx);
         get_index(tx_hash);
+        query_done();
     };
 
     codec_.fetch_transaction(on_error, on_done, tx_hash);
@@ -192,22 +195,24 @@ void tx_updater::get_tx(bc::hash_digest tx_hash, bool want_inputs)
 
 void tx_updater::get_tx_mem(bc::hash_digest tx_hash, bool want_inputs)
 {
+    ++queued_queries_;
+
     auto on_error = [this](const std::error_code& error)
     {
-        std::cout << "tx_updater::get_tx_mem error" << std::endl;
         (void)error;
         failed_ = true;
+        query_done();
     };
 
     auto on_done = [this, tx_hash, want_inputs](const bc::transaction_type& tx)
     {
-        std::cout << "tx_updater::get_tx_mem done" << std::endl;
         BITCOIN_ASSERT(tx_hash == bc::hash_transaction(tx));
         if (db_.insert(tx, tx_state::unconfirmed))
             callbacks_.on_add(tx);
         if (want_inputs)
             get_inputs(tx);
         get_index(tx_hash);
+        query_done();
     };
 
     codec_.fetch_unconfirmed_transaction(on_error, on_done, tx_hash);
@@ -219,8 +224,6 @@ void tx_updater::get_index(bc::hash_digest tx_hash)
 
     auto on_error = [this, tx_hash](const std::error_code& error)
     {
-        std::cout << "tx_updater::get_index error" << std::endl;
-
         // A failure means that the transaction is unconfirmed:
         (void)error;
         db_.unconfirmed(tx_hash);
@@ -231,8 +234,6 @@ void tx_updater::get_index(bc::hash_digest tx_hash)
 
     auto on_done = [this, tx_hash](size_t block_height, size_t index)
     {
-        std::cout << "tx_updater::get_index done" << std::endl;
-
         // The transaction is confirmed:
         (void)index;
 
@@ -249,8 +250,6 @@ void tx_updater::send_tx(const bc::transaction_type& tx)
 {
     auto on_error = [this, tx](const std::error_code& error)
     {
-        std::cout << "tx_updater::send_tx error" << std::endl;
-
         //server_fail(error);
         db_.forget(bc::hash_transaction(tx));
         callbacks_.on_send(error, tx);
@@ -258,8 +257,6 @@ void tx_updater::send_tx(const bc::transaction_type& tx)
 
     auto on_done = [this, tx]()
     {
-        std::cout << "tx_updater::send_tx done" << std::endl;
-
         std::error_code error;
         db_.unconfirmed(bc::hash_transaction(tx));
         callbacks_.on_send(error, tx);
@@ -270,22 +267,24 @@ void tx_updater::send_tx(const bc::transaction_type& tx)
 
 void tx_updater::query_address(const bc::payment_address& address)
 {
+    ++queued_queries_;
+
     auto on_error = [this](const std::error_code& error)
     {
-        std::cout << "address_updater::query_address error" << std::endl;
         (void)error;
         failed_ = true;
+        query_done();
     };
 
     auto on_done = [this](const bc::blockchain::history_list& history)
     {
-        std::cout << "address_updater::query_address done" << std::endl;
         for (auto& row: history)
         {
             watch(row.output.hash, true);
             if (row.spend.hash != bc::null_hash)
                 watch(row.spend.hash, true);
         }
+        query_done();
     };
 
     codec_.address_fetch_history(on_error, on_done, address);

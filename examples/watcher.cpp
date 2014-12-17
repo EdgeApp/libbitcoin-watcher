@@ -58,10 +58,11 @@ private:
     void cmd_dump(std::stringstream& args);
 
     // tx_callbacks interface:
-    virtual void on_add(const bc::transaction_type& tx);
-    virtual void on_height(size_t height);
-    virtual void on_send(const std::error_code& error, const bc::transaction_type& tx);
-    virtual void on_fail();
+    virtual void on_add(const bc::transaction_type& tx) override;
+    virtual void on_height(size_t height) override;
+    virtual void on_send(const std::error_code& error, const bc::transaction_type& tx) override;
+    virtual void on_quiet() override;
+    virtual void on_fail() override;
 
     bool check_connection();
 
@@ -394,6 +395,12 @@ void cli::on_send(const std::error_code& error, const bc::transaction_type& tx)
         std::cout << "failed to send transaction" << std::endl;
     else
         std::cout << "sent transaction" << std::endl;
+}
+
+void cli::on_quiet()
+{
+    std::cout << "query done" << std::endl;
+    std::cout << "> " << std::flush;
 }
 
 void cli::on_fail()
