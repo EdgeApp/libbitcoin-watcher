@@ -111,6 +111,28 @@ bc::output_info_list tx_db::get_utxos()
     return out;
 }
 
+bc::output_info_list tx_db::get_utxos(const address_set& addresses)
+{
+    auto raw = get_utxos();
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    bc::output_info_list utxos;
+    for (auto& utxo: raw)
+    {
+        auto i = rows_.find(utxo.point.hash);
+        BITCOIN_ASSERT(i != rows_.end());
+        const auto& tx = i->second.tx;
+        auto& output = tx.outputs[utxo.point.index];
+
+        bc::payment_address to_address;
+        if (bc::extract(to_address, output.script))
+            if (addresses.find(to_address) != addresses.end())
+                utxos.push_back(utxo);
+    }
+
+    return utxos;
+}
+
 bc::data_chunk tx_db::serialize()
 {
     std::lock_guard<std::mutex> lock(mutex_);

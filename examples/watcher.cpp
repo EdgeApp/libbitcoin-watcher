@@ -280,27 +280,11 @@ void cli::cmd_watch(std::stringstream& args)
 
 void cli::cmd_utxos(std::stringstream& args)
 {
-    auto raw = db_.get_utxos();
-
-    // Filter based on what we are watching:
     bc::output_info_list utxos;
     if (connection_)
-    {
-        for (auto& utxo: raw)
-        {
-            const auto& tx = db_.get_tx(utxo.point.hash);
-            auto& output = tx.outputs[utxo.point.index];
-
-            bc::payment_address to_address;
-            if (bc::extract(to_address, output.script))
-                if (connection_->updater_.watching(to_address))
-                    utxos.push_back(utxo);
-        }
-    }
+        utxos = db_.get_utxos(connection_->updater_.watching());
     else
-    {
-        utxos = raw;
-    }
+        utxos = db_.get_utxos();
 
     // Display the output:
     size_t total = 0;

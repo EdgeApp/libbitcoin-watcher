@@ -65,9 +65,12 @@ void tx_updater::send(bc::transaction_type tx)
     send_tx(tx);
 }
 
-bool tx_updater::watching(const bc::payment_address& address)
+address_set tx_updater::watching()
 {
-    return rows_.find(address) != rows_.end();
+    address_set out;
+    for (auto& row: rows_)
+        out.insert(row.first);
+    return out;
 }
 
 bc::client::sleep_time tx_updater::wakeup()

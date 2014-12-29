@@ -23,6 +23,7 @@
 #include <mutex>
 #include <ostream>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace libwallet {
 
@@ -35,6 +36,8 @@ enum class tx_state
     /// The transaction is in a block.
     confirmed
 };
+
+typedef std::unordered_set<bc::payment_address> address_set;
 
 /**
  * A list of transactions.
@@ -81,6 +84,11 @@ public:
      * Get all unspent outputs in the database.
      */
     BC_API bc::output_info_list get_utxos();
+
+    /**
+     * Get just the utxos corresponding to a set of addresses.
+     */
+    BC_API bc::output_info_list get_utxos(const address_set& addresses);
 
     /**
      * Write the database to an in-memory blob.
