@@ -146,7 +146,6 @@ private:
 
     // - Internal: ---------------------
     void check_fork(size_t height);
-    bool is_unspent(bc::output_point point);
 
     // Guards access to object state:
     std::mutex mutex_;

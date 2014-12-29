@@ -92,16 +92,33 @@ bc::output_info_list tx_db::get_utxos()
 {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    // This is an O(n^2) algorithm!
+    // Allow inserting bc::output_point into std::set:
+    class point_cmp {
+    public:
+        bool operator () (const bc::output_point& a, const bc::output_point& b)
+        {
+            if (a.hash == b.hash)
+                return a.index < b.index;
+            else
+                return a.hash < b.hash;
+        }
+    };
+
+    // Build a list of spent outputs:
+    std::set<bc::output_point, point_cmp> spends;
+    for (auto& row: rows_)
+        for (auto& input: row.second.tx.inputs)
+            spends.insert(input.previous_output);
+
+    // Check each output against the list:
     bc::output_info_list out;
     for (auto& row: rows_)
     {
-        // Check each output:
         for (uint32_t i = 0; i < row.second.tx.outputs.size(); ++i)
         {
             auto& output = row.second.tx.outputs[i];
             bc::output_point point = {row.first, i};
-            if (is_unspent(point))
+            if (spends.find(point) == spends.end())
             {
                 bc::output_info_type info = {point, output.value};
                 out.push_back(info);
@@ -363,20 +380,6 @@ void tx_db::check_fork(size_t height)
             row.second.block_height == prev_height)
             row.second.need_check = true;
 }
-
-/**
- * Returns true if no other transaction in the database references this
- * output.
- */
-bool tx_db::is_unspent(bc::output_point point)
-{
-    for (auto& row: rows_)
-        for (auto& input: row.second.tx.inputs)
-            if (point == input.previous_output)
-                return false;
-    return true;
-}
-
 
 } // libwallet
 
