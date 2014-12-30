@@ -76,6 +76,12 @@ public:
     BC_API size_t get_tx_height(bc::hash_digest tx_hash);
 
     /**
+     * Returns true if all inputs are addresses in the list control.
+     */
+    BC_API bool is_spend(bc::hash_digest tx_hash,
+        const address_set& addresses);
+
+    /**
      * Returns true if this address has received any funds.
      */
     BC_API bool has_history(const bc::payment_address& address);

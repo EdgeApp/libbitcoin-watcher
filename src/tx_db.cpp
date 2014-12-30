@@ -70,6 +70,26 @@ size_t tx_db::get_tx_height(bc::hash_digest tx_hash)
     return i->second.block_height;
 }
 
+bool tx_db::is_spend(bc::hash_digest tx_hash, const address_set& addresses)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    auto i = rows_.find(tx_hash);
+    if (i == rows_.end())
+        return false;
+    auto tx = i->second.tx;
+
+    for (auto& input: tx.inputs)
+    {
+        bc::payment_address address;
+        if (!bc::extract(address, input.script))
+            return false;
+        if (addresses.find(address) == addresses.end())
+            return false;
+    }
+    return true;
+}
+
 bool tx_db::has_history(const bc::payment_address& address)
 {
     std::lock_guard<std::mutex> lock(mutex_);
