@@ -118,6 +118,7 @@ bc::client::sleep_time tx_updater::wakeup()
 
 void tx_updater::watch(bc::hash_digest tx_hash, bool want_inputs)
 {
+    db_.reset_timestamp(tx_hash);
     if (!db_.has_tx(tx_hash))
         get_tx(tx_hash, want_inputs);
     else if (want_inputs)

@@ -24,6 +24,7 @@
 #include <ostream>
 #include <unordered_map>
 #include <unordered_set>
+#include <time.h>
 
 namespace libwallet {
 
@@ -53,7 +54,7 @@ class BC_API tx_db
 {
 public:
     BC_API ~tx_db();
-    BC_API tx_db();
+    BC_API tx_db(unsigned unconfirmed_timeout=24*60*60);
 
     /**
      * Returns the highest block that this database has seen.
@@ -143,6 +144,11 @@ private:
      */
     BC_API void forget(bc::hash_digest tx_hash);
 
+    /**
+     * Call this each time the server reports that it sees a transaction.
+     */
+    BC_API void reset_timestamp(bc::hash_digest tx_hash);
+
     typedef std::function<void (bc::hash_digest tx_hash)> hash_fn;
     BC_API void foreach_unconfirmed(hash_fn&& f);
     BC_API void foreach_forked(hash_fn&& f);
@@ -170,6 +176,7 @@ private:
         // State machine:
         tx_state state;
         size_t block_height;
+        time_t timestamp;
         //bc::hash_digest block_hash; // TODO: Fix obelisk to return this
 
         // The transaction is certainly in a block, but there is some
@@ -177,6 +184,10 @@ private:
         bool need_check;
     };
     std::unordered_map<bc::hash_digest, tx_row> rows_;
+
+    // Number of seconds an unconfirmed transaction must remain unseen
+    // before we stop saving it:
+    const unsigned unconfirmed_timeout_;
 };
 
 } // namespace libwallet

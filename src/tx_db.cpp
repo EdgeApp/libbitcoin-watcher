@@ -29,8 +29,9 @@ BC_API tx_db::~tx_db()
 {
 }
 
-BC_API tx_db::tx_db()
-  : last_height_(0)
+BC_API tx_db::tx_db(unsigned unconfirmed_timeout)
+  : last_height_(0),
+    unconfirmed_timeout_(unconfirmed_timeout)
 {
 }
 
@@ -184,13 +185,22 @@ bc::data_chunk tx_db::serialize()
     serial.write_8_bytes(last_height_);
 
     // Tx table:
+    time_t now = time(nullptr);
     for (const auto& row: rows_)
     {
+        // Don't save old unconfirmed transactions:
+        if (row.second.timestamp + unconfirmed_timeout_ < now)
+            continue;
+
+        auto height = row.second.block_height;
+        if (tx_state::unconfirmed == row.second.state)
+            height = row.second.timestamp;
+
         serial.write_byte(serial_tx);
         serial.write_hash(row.first);
         serial.set_iterator(satoshi_save(row.second.tx, serial.iterator()));
         serial.write_byte(static_cast<uint8_t>(row.second.state));
-        serial.write_8_bytes(row.second.block_height);
+        serial.write_8_bytes(height);
         serial.write_byte(row.second.need_check);
     }
 
@@ -219,6 +229,7 @@ bool tx_db::load(const bc::data_chunk& data)
         // Last block height:
         last_height = serial.read_8_bytes();
 
+        time_t now = time(nullptr);
         while (serial.iterator() != data.end())
         {
             if (serial.read_byte() != serial_tx)
@@ -231,6 +242,9 @@ bool tx_db::load(const bc::data_chunk& data)
             serial.set_iterator(step);
             row.state = static_cast<tx_state>(serial.read_byte());
             row.block_height = serial.read_8_bytes();
+            row.timestamp = now;
+            if (tx_state::unconfirmed == row.state)
+                row.timestamp = row.block_height;
             row.need_check = serial.read_byte();
             rows[hash] = std::move(row);
         }
@@ -261,6 +275,7 @@ void tx_db::dump(std::ostream& out)
             break;
         case tx_state::unconfirmed:
             out << "state: unconfirmed" << std::endl;
+            out << "timestamp: " << row.second.timestamp << std::endl;
             break;
         case tx_state::confirmed:
             out << "state: confirmed" << std::endl;
@@ -301,7 +316,7 @@ bool tx_db::insert(const bc::transaction_type& tx, tx_state state)
     // Do not stomp existing tx's:
     auto tx_hash = bc::hash_transaction(tx);
     if (rows_.find(tx_hash) == rows_.end()) {
-        rows_[tx_hash] = tx_row{tx, state, 0, false};
+        rows_[tx_hash] = tx_row{tx, state, 0, time(nullptr), false};
         return true;
     }
     return false;
@@ -351,6 +366,15 @@ void tx_db::forget(bc::hash_digest tx_hash)
     std::lock_guard<std::mutex> lock(mutex_);
 
     rows_.erase(tx_hash);
+}
+
+void tx_db::reset_timestamp(bc::hash_digest tx_hash)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    auto i = rows_.find(tx_hash);
+    if (i != rows_.end())
+        i->second.timestamp = time(nullptr);
 }
 
 void tx_db::foreach_unconfirmed(hash_fn&& f)
