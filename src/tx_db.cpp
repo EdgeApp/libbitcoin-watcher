@@ -300,15 +300,6 @@ void tx_db::dump(std::ostream& out)
     }
 }
 
-void tx_db::at_height(size_t height)
-{
-    std::lock_guard<std::mutex> lock(mutex_);
-    last_height_ = height;
-
-    // Check for blockchain forks:
-    check_fork(height);
-}
-
 bool tx_db::insert(const bc::transaction_type& tx, tx_state state)
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -320,6 +311,15 @@ bool tx_db::insert(const bc::transaction_type& tx, tx_state state)
         return true;
     }
     return false;
+}
+
+void tx_db::at_height(size_t height)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    last_height_ = height;
+
+    // Check for blockchain forks:
+    check_fork(height);
 }
 
 void tx_db::confirmed(bc::hash_digest tx_hash, size_t block_height)

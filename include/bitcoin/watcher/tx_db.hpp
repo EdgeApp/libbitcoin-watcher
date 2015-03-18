@@ -112,6 +112,12 @@ public:
      */
     BC_API void dump(std::ostream& out);
 
+    /**
+     * Insert a new transaction into the database.
+     * @return true if the callback should be fired.
+     */
+    BC_API bool insert(const bc::transaction_type &tx, tx_state state);
+
 private:
     // - Updater: ----------------------
     friend class tx_updater;
@@ -120,12 +126,6 @@ private:
      * Updates the block height.
      */
     void at_height(size_t height);
-
-    /**
-     * Insert a new transaction into the database.
-     * @return true if the callback should be fired.
-     */
-    bool insert(const bc::transaction_type &tx, tx_state state);
 
     /**
      * Mark a transaction as confirmed.
